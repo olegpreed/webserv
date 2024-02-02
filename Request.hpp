@@ -5,10 +5,16 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <stack>
 #include <regex>
 #include <sstream>
 #include <algorithm>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "CodesTypes.hpp"
 
 enum Status
 {
@@ -28,6 +34,8 @@ enum ChunkStatus
 
 #define MAX_PATH_LENGTH 2048
 #define MAX_CHUNK_SIZE 65536
+#define FILE_PATH "file.txt"
+#define BODY_BUFFER_LENGTH 10
 
 class Request {
 	private:
@@ -36,14 +44,16 @@ class Request {
 		std::string _version;
 		std::string _query;
 		std::map<std::string, std::string> _headers;
-		std::string _body;
-		std::string _buffer;
+		int _fileFd;
+		ssize_t _bytesRead;
 		bool _parsingComplete;
 		bool _readComplete;
 		Status _status;
+		std::string _bodyBuffer;
+		std::string _buffer;
 		ChunkStatus _chunkStatus;
 		size_t _chunkSize;
-		size_t _bodySize;
+		ssize_t _bodySize;
 		int _errorCode;
 	
 	public:
@@ -62,13 +72,16 @@ class Request {
 		const std::string &getPath() const;
 		const std::string &getVersion() const;
 		const std::string &getQuery() const;
-		const std::string &getBody() const;
+		int getFileFd() const;
+		int writeToFile();
+		ssize_t getBytesRead() const;
 		Status getStatus() const;
 		bool isParsingComplete() const;
 		void setReadComplete(bool readComplete);
 		void setPath(const std::string &path);
 		void setStatus(Status status);
 		int	getErrorCode() const;
+		int createTempFile();
 		const std::map<std::string, std::string> &getHeaders() const;
 };
 

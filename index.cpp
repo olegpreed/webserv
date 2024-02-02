@@ -42,6 +42,7 @@ void handleRequest(int clientSocket)
    		return;
 	}
 
+	std::string saveRequest;
 	while (true) 
 	{
 		bytesRead = recv(clientSocket, buff, sizeof(buff), 0);
@@ -61,11 +62,18 @@ void handleRequest(int clientSocket)
 		if (bytesRead < BUFFSIZE)
 			request->setReadComplete(true);
 		std::string chunk(buff, bytesRead);
+		saveRequest.append(buff, bytesRead);
 		if (request->parse(chunk) || request->isParsingComplete())
 			break;
 		memset(buff, 0, sizeof(buff));
 	}
 	std::cout << *request << std::endl;
+	size_t found = 0;
+    while ((found = saveRequest.find("\r\n", found)) != std::string::npos) {
+        saveRequest.replace(found, 2, "\\r\\n");
+        found += 4;  // Move past the four characters added
+    }
+	std::cout << saveRequest << std::endl;
 	response.request = *request;
 	response.setConfig(config);
 	response.buildResponse();

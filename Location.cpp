@@ -21,7 +21,7 @@ Location::Location() :
 	_return(-1, ""),
 	_cgi_pass(),
 	_client_body_temp_path(),
-	_client_max_body_size(-1) {
+	_client_max_body_size(DEFAULT_MAX_BODY_SIZE) {
 }
 
 Location::Location(const Location& other) :

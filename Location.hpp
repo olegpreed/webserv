@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+#define DEFAULT_MAX_BODY_SIZE 10000000
+
 class Location {
 	private:
 		std::string					_location_block;

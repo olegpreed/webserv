@@ -34,20 +34,36 @@ ServerConfig::ServerConfig() :
 	location1.setAutoindex(false);
 	std::vector<std::string> allow;
 	allow.push_back("GET");
+	// allow.push_back("PUT");
+	// allow.push_back("POST");
+	// allow.push_back("DELETE");
 	location1.setLimitExcept(allow);
 	_location.insert(std::make_pair("/", location1));
 
+	// std::vector<std::string> index2;
+	// location2.setIndex(index2);
+	// location2.setRoot("./var");
+	// location2.setAutoindex(true);
+	// std::vector<std::string> allow2;
+	// allow2.push_back("GET");
+	// allow2.push_back("POST");
+	// allow2.push_back("DELETE");
+	// location2.setLimitExcept(allow2);
+	// location2.setClientMaxBodySize(10);
+	// _location.insert(std::make_pair("/upload", location2));
+
 	std::vector<std::string> index2;
+	index2.push_back("youpi.bad_extension");
+	index2.push_back("nop/youpi.bad_extension");
 	location2.setIndex(index2);
-	location2.setRoot("./var");
-	location2.setAutoindex(true);
+	location2.setRoot("./YoupiBanane");
+	location2.setAutoindex(false);
 	std::vector<std::string> allow2;
 	allow2.push_back("GET");
 	allow2.push_back("POST");
-	allow2.push_back("DELETE");
 	location2.setLimitExcept(allow2);
 	location2.setClientMaxBodySize(10);
-	_location.insert(std::make_pair("/upload", location2));
+	_location.insert(std::make_pair("/directory", location2));
 
 	std::pair<int, std::string> return_;
 	return_.first = 302;

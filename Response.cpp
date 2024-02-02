@@ -15,6 +15,17 @@ void Response::setConfig(ServerConfig config)
 	_config = config;
 }
 
+int Response::executeCGI()
+{
+	// std::vector<std::string> envp;
+	// envp.push_back("SERVER_PROTOCOL=HTTP/1.1");
+	// envp.push_back("SERVER_SOFTWARE=webserv");
+	// // envp.push_back("SERVER_NAME=" + _location.);
+	// envp.push_back("REQUEST_METHOD=" + request.getMethod());
+	// envp.push_back("REQUEST_URI=" + request.getUri());
+	return 201;
+}
+
 std::string Response::getCodeMessage()
 {
 	std::string codeMessage;
@@ -53,15 +64,19 @@ void Response::buildErrorBody()
 
 int Response::buildFileBody(std::ifstream &file)
 {
-	if (_code != 200)
-	{
-		buildHTML(std::to_string(_code), getCodeMessage());
-		return _code;
-	}
+	// if (_code != 200)
+	// {
+	// 	buildHTML(std::to_string(_code), getCodeMessage());
+	// 	return _code;
+	// }
 	if (!file.is_open())
 		return 404;
 	else
+	{
+		if (request.getMethod() == "POST")
+			return executeCGI();
 		_body.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+	}
 	return 200;
 }
 
@@ -80,7 +95,7 @@ int Response::deleteFile()
 		return 403;
     if (std::remove(_file.c_str()) == 0) {
         std::cout << "File deleted successfully.\n" << std::endl;
-		return 200;
+		return 204;
     } else {
         std::cerr << "Error deleting file" << std::endl;
 		return 403;
@@ -120,7 +135,7 @@ int Response::setCorrectPath()
 				std::string locationTempNew;
 				_location = it->second;
 				locationTempNew = it->first;
-				std::string finalPath = _location.getRoot() + path;
+				std::string finalPath = _location.getRoot() + path.substr(locationPath.length());
 				if (locationTempNew.length() > locationTemp.length())
 				{
 					_location = it->second;
@@ -137,35 +152,41 @@ int Response::setCorrectPath()
 	return 0;
 }
 
+int Response::uploadFile()
+{
+	return 0;
+}
+
 int Response::buildBody()
 {
 	int code;
 	if ((code = setCorrectPath()))
 		return code;
 	if (request.getMethod() == "DELETE")
-	{
 		return deleteFile();
-	}
-	if (_location.getClientMaxBodySize() != -1 && 
-		static_cast<ssize_t>(request.getBody().length()) > _location.getClientMaxBodySize())
+	// if (request.getMethod() == "PUT")
+	// 	return uploadFile();
+	if (request.getBytesRead() > _location.getClientMaxBodySize())
 		return 413;
 	if (_location.getAutoindex() && isDirectory(_file))
 	{
 		if (buildAutoindexBody())
 			return 404;
 	}
-	else if (!_location.getAutoindex() && isDirectory(_file))
+	else if (!_location.getAutoindex() && isDirectory(_file) && request.getMethod() == "GET")
 	{
 		std::vector<std::string> index = _location.getIndex();
+		std::string filePath = _file;
 		for (std::vector<std::string>::iterator it = index.begin(); it != index.end(); it++)
 		{
-			_file = _location.getRoot() + "/" + *it;
+			_file = filePath + "/" + *it;
 			std::ifstream file(_file);
-			if (!buildFileBody(file))
-				break;
+			if ((_code = buildFileBody(file)) == 200)
+				return _code;
 		}
-		if (_body.empty())
-			return 404;
+		return _code;
+		// if (_body.empty())
+		// 	return 404;
 	}
 	else 
 	{
@@ -177,7 +198,7 @@ int Response::buildBody()
 
 void Response::buildStatusLine()
 {	
-	_response = "HTTP/1.1 " + std::to_string(_code) + " " + getCodeMessage() + "\r\n";
+	_response = "HTTP/1.1 " + std::to_string(_code) + " " + CodesTypes::codeMessages.at(_code) + "\r\n";
 }
 
 void Response::buildHeaders()

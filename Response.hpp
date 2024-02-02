@@ -19,6 +19,7 @@ class Response
 		std::string _response;
 		ServerConfig _config;
 		Location _location;
+		bool _cgi;
 		int _code;
 
 	public:
@@ -33,6 +34,8 @@ class Response
 		int buildFileBody(std::ifstream &file);
 		int setCorrectPath();
 		int deleteFile();
+		int uploadFile();
+		int executeCGI();
 		std::string getCodeMessage();
 		void buildDefaultErrorPage();
 		const std::string &getResponse();

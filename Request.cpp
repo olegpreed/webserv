@@ -5,6 +5,7 @@ Request::Request()
 	_status = REQUEST_LINE;
 	_chunkStatus = CHUNK_SIZE;
 	_readComplete = false;
+	_bytesRead = 0;
 	_errorCode = 0;
 }
 
@@ -25,7 +26,7 @@ Request &Request::operator=(const Request &src)
 		_version = src._version;
 		_query = src._query;
 		_headers = src._headers;
-		_body = src._body;
+		_fileFd = src._fileFd;
 		_buffer = src._buffer;
 		_bodySize = src._bodySize;
 		_errorCode = src._errorCode;
@@ -67,10 +68,16 @@ const std::map<std::string, std::string> &Request::getHeaders() const
 	return _headers;
 }
 
-const std::string &Request::getBody() const
+int	Request::getFileFd() const
 {
-	return _body;
+	return _fileFd;
 }
+
+ssize_t Request::getBytesRead() const
+{
+	return _bytesRead;
+}
+
 
 int Request::getErrorCode() const
 {
@@ -98,7 +105,7 @@ std::ostream &operator<<(std::ostream &os, const Request &request)
 	std::cout << "Path: " << request.getPath() << std::endl;
 	std::cout << "Version: " << request.getVersion() << std::endl;
 	std::cout << "Query: " << request.getQuery() << std::endl;
-	std::cout << "Body: " << request.getBody() << std::endl;
+	std::cout << "FD: " << request.getFileFd() << std::endl;
 	std::cout << "Error: " << request.getErrorCode() << std::endl;
 	for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin(); it != request.getHeaders().end(); ++it) {
         std::cout << it->first << ":" << it->second << std::endl;
@@ -170,12 +177,15 @@ int Request::parseRequestLine()
 	_buffer.erase(0, pos);								// removes all the possible new lines at the beginning of the request
 	if (_buffer.find("\r\n") != std::string::npos) 	// checks that we have the full first line of the request
 	{
-		if (_buffer.find("GET") != 0 && _buffer.find("POST") != 0 && _buffer.find("DELETE") != 0) // checks that the method is the very first thing after all new lines
-			return 400;
 		std::istringstream buffer(_buffer);
-		buffer >> _method >> _path >> _version;			// parses the first line of the request
-		if (_method != "GET" && _method != "POST" && _method != "DELETE")
+		buffer >> _method;					// parses the first line of the request
+		size_t ptrIdx1 = buffer.tellg(); 
+		if (ptrIdx1 != _method.length())
+			return 400;
+		std::set<std::string>::iterator it = CodesTypes::HTTPMethods.find(_method);
+		if (it == CodesTypes::HTTPMethods.end())
 			return 501;
+		buffer >> _path >> _version;	
 		if (_path.length() > MAX_PATH_LENGTH)
 			return 414;
 		if (_path.find("http://") == 0)					// checks if there's full path
@@ -214,8 +224,8 @@ int Request::parseRequestLine()
 			return 505;
 		_version.erase(0, 5);
 
-		size_t ptrIdx = buffer.tellg(); 			// checks there is new line right after HTTP version and erases the first line from the buffer
-		if (_buffer.find("\r\n", ptrIdx) == ptrIdx)
+		size_t ptrIdx2 = buffer.tellg(); 			// checks there is new line right after HTTP version and erases the first line from the buffer
+		if (_buffer.find("\r\n", ptrIdx2) == ptrIdx2)
 			_buffer.erase(0, _buffer.find("\r\n") + 2);
 		else
 			return 400;
@@ -274,7 +284,7 @@ int Request::parseHeaders()
 				_buffer.erase(0, 2);
 				if (_headers.find("host") == _headers.end())
 					return 400;
-				if (_method == "POST")
+				if (_method  == "POST" || _method == "PUT")
 					_status = PREBODY;
 				else
 				{
@@ -288,32 +298,70 @@ int Request::parseHeaders()
 	return 0;
 }
 
+int Request::createTempFile()
+{
+	const char* filePath = FILE_PATH;
+    _fileFd = open(filePath, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	if (_fileFd == -1)
+        return 500;
+	return 0;
+}
+
 int Request::beforeParseBody()
 {
 	if (_headers.find("transfer-encoding") != _headers.end() 
 	&& _headers["transfer-encoding"] != "identity")
 	{
 		_status = CHUNKS;
-		return 0;
+		return createTempFile();
 	}
 	if (_headers.find("content-length") == _headers.end())
 		return 411;
 	else if(_headers["content-length"].find_first_not_of("0123456789") != std::string::npos || 
 	std::stoll(_headers["content-length"]) < 0)
 		return 400;
-	_bodySize = static_cast<size_t>(std::stoull(_headers["content-length"])); //ask Artem
+	_bodySize = static_cast<size_t>(std::stoull(_headers["content-length"]));
+	if (std::stoll(_headers["content-length"]) == 0)
+	{
+		_status = DONE;
+		return 0;
+	}
+	createTempFile();
 	_status = BODY;
+	return 0;
+}
+
+int Request::writeToFile()
+{
+	ssize_t bytesWritten = write(_fileFd, _bodyBuffer.c_str(), _bodyBuffer.size());
+	_bodyBuffer.clear();
+	if (bytesWritten == -1)
+		return 1;
 	return 0;
 }
 
 int Request::parseBody()
 {
-	_body += _buffer;
-	_buffer.clear();
-	if (_readComplete && _body.length() != _bodySize)
-		return 400;
-	else if (_readComplete && _body.length() == _bodySize)
+	if (_bodyBuffer.length() + _buffer.length() < BODY_BUFFER_LENGTH)
 	{
+		_bodyBuffer += _buffer;
+		_bytesRead += _buffer.length();
+		_buffer.clear();
+	}
+	else 
+	{
+		if (writeToFile())
+			return 500;
+		_bodyBuffer += _buffer;
+		_bytesRead += _buffer.length();
+		_buffer.clear();
+	}
+	if (_readComplete && _bytesRead != _bodySize)
+		return 400;
+	else if (_readComplete && _bytesRead == _bodySize)
+	{
+		if (writeToFile())
+			return 500;
 		_status = DONE;
 		return 0;
 	}
@@ -325,8 +373,13 @@ int Request::parseChunks()
 {
 
 	size_t pos = _buffer.find("\r\n");
-	if (_readComplete && pos == std::string::npos)
+	if (_readComplete && pos == std::string::npos && _buffer.length() != 0)
 		return 400;
+	else if (_readComplete && pos == std::string::npos && _buffer.length() == 0)
+	{
+		_status = DONE;
+		return 0;
+	}
 	while (pos != std::string::npos)
 	{
 		if (_chunkStatus == CHUNK_SIZE)
@@ -342,6 +395,8 @@ int Request::parseChunks()
 						return 400;
 					else
 					{
+						if (writeToFile())
+							return 500;
 						_status = DONE;
 						return 0;
 					}
@@ -357,8 +412,14 @@ int Request::parseChunks()
 		{
 			if (_buffer.substr(0, pos).length() != _chunkSize)
 				return 400;
-			_body += _buffer.substr(0, pos);
+			_bodyBuffer += _buffer.substr(0, pos);
+			_bytesRead += pos;
 			_buffer.erase(0, pos + 2);
+			if (_bodyBuffer.length() > BODY_BUFFER_LENGTH)
+			{
+				if (writeToFile())
+					return 500;
+			}
 			_chunkStatus = CHUNK_SIZE;
 		}
 		pos = _buffer.find("\r\n");
@@ -376,7 +437,7 @@ int Request::parse(const std::string &requestChunk)
 	if (_status == PREBODY)
 		_errorCode = beforeParseBody();			// parse the body of the request
 	if (_status == BODY)
-		_errorCode = parseBody();			// parse the body of the request
+		_errorCode = parseBody();		// parse the body of the request
 	if (_status == CHUNKS)
 		_errorCode = parseChunks();		// parse chunks of the body of the request
 	return _errorCode;
