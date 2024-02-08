@@ -7,9 +7,16 @@ Request::Request()
 	_readComplete = false;
 	_bytesRead = 0;
 	_errorCode = 0;
+	_fileFd = -1;
 }
 
-Request::~Request() {}
+Request::~Request() {
+	if (_fileFd != -1)
+	{
+		fsync(_fileFd);
+		close(_fileFd);
+	}
+}
 
 Request::Request(const Request &src) 
 {
@@ -156,10 +163,13 @@ std::string simplifyPath(const std::string& path) {
     }
 
     // Reconstruct the simplified path
-    std::stack<std::string> dirs;
-    for (const auto& dir : tokens) {
-        dirs.push(dir);
-    }
+	std::stack<std::string> dirs; // <----
+	for (std::vector<std::string>::iterator it = tokens.begin(); it != tokens.end(); it++)
+		dirs.push(*it);
+    // std::stack<std::string> dirs;
+    // for (const auto& dir : tokens) {
+    //     dirs.push(dir);
+    // }
 
     std::string simplifiedPath;
     while (!dirs.empty()) {
@@ -336,7 +346,16 @@ int Request::writeToFile()
 	ssize_t bytesWritten = write(_fileFd, _bodyBuffer.c_str(), _bodyBuffer.size());
 	_bodyBuffer.clear();
 	if (bytesWritten == -1)
+	{
+		std::cout << "Error writing to file" << std::endl;
 		return 1;
+	}
+	else 
+		std::cout << bytesWritten << std::endl;
+	if (fsync(_fileFd) == -1) {
+        // Handle error if fsync fails
+    	return 1;
+    }
 	return 0;
 }
 
@@ -371,16 +390,17 @@ int Request::parseBody()
 
 int Request::parseChunks()
 {
-
+	std::cout << "parseChunks: " << _path << " chunk: " << _buffer << std::endl;
 	size_t pos = _buffer.find("\r\n");
 	if (_readComplete && pos == std::string::npos && _buffer.length() != 0)
 		return 400;
 	else if (_readComplete && pos == std::string::npos && _buffer.length() == 0)
 	{
+		std::cout << "finished!" << std::endl;
 		_status = DONE;
 		return 0;
 	}
-	while (pos != std::string::npos)
+	while (pos != std::string::npos || _chunkStatus == CHUNK_DATA)
 	{
 		if (_chunkStatus == CHUNK_SIZE)
 		{
@@ -395,9 +415,12 @@ int Request::parseChunks()
 						return 400;
 					else
 					{
-						if (writeToFile())
-							return 500;
 						_status = DONE;
+						if (_bodyBuffer.length() > 0)
+						{
+							if (writeToFile())
+								return 500;
+						}
 						return 0;
 					}
 				}
@@ -408,21 +431,33 @@ int Request::parseChunks()
 				return 400;
 			}
 		}
-		else
+		if (_chunkStatus == CHUNK_DATA)
 		{
-			if (_buffer.substr(0, pos).length() != _chunkSize)
+			pos = _buffer.find("\r\n");
+			if ((pos != std::string::npos && pos != _chunkSize) 
+			|| (pos == std::string::npos && _buffer.length() > _chunkSize))
 				return 400;
 			_bodyBuffer += _buffer.substr(0, pos);
-			_bytesRead += pos;
-			_buffer.erase(0, pos + 2);
 			if (_bodyBuffer.length() > BODY_BUFFER_LENGTH)
 			{
 				if (writeToFile())
 					return 500;
 			}
-			_chunkStatus = CHUNK_SIZE;
+			if (pos != std::string::npos)
+			{
+				_buffer.erase(0, pos + 2);
+				_bytesRead += pos;
+				_chunkStatus = CHUNK_SIZE;
+				pos = _buffer.find("\r\n");
+			}
+			else
+			{
+				_bytesRead += _buffer.length();
+				_chunkSize -= _buffer.length();
+				_buffer.clear();
+				break;
+			}
 		}
-		pos = _buffer.find("\r\n");
 	}
 	return 0;
 }

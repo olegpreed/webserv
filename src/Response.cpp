@@ -17,12 +17,6 @@ void Response::setConfig(ServerConfig config)
 
 int Response::executeCGI()
 {
-	// std::vector<std::string> envp;
-	// envp.push_back("SERVER_PROTOCOL=HTTP/1.1");
-	// envp.push_back("SERVER_SOFTWARE=webserv");
-	// // envp.push_back("SERVER_NAME=" + _location.);
-	// envp.push_back("REQUEST_METHOD=" + request.getMethod());
-	// envp.push_back("REQUEST_URI=" + request.getUri());
 	return 201;
 }
 
@@ -40,7 +34,7 @@ std::string Response::getCodeMessage()
 
 void Response::buildHTML(const std::string &pageTitle, const std::string &pageBody)
 {
-	_body = "<html><head><title>" + pageTitle + "</title></head><body>" + pageBody + "</body></html>";
+	_body = "<html><head><link rel=\"stylesheet\" href=\"styles.css\"><title>" + pageTitle + "</title></head><body>" + pageBody + "</body></html>";
 }
 
 void Response::buildErrorBody()
@@ -64,17 +58,16 @@ void Response::buildErrorBody()
 
 int Response::buildFileBody(std::ifstream &file)
 {
-	// if (_code != 200)
-	// {
-	// 	buildHTML(std::to_string(_code), getCodeMessage());
-	// 	return _code;
-	// }
-	if (!file.is_open())
+	if ((request.getMethod() == "POST" || request.getMethod() == "PUT")
+		&& _location.getCgiPass() != "")
+		return executeCGI();
+	else if (!file.is_open())
 		return 404;
 	else
 	{
-		if (request.getMethod() == "POST")
-			return executeCGI();
+		if ((request.getMethod() == "POST" || request.getMethod() == "PUT")
+		&& _location.getClientBodyTempPath() != "")
+			return uploadFile();
 		_body.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 	}
 	return 200;
@@ -102,23 +95,47 @@ int Response::deleteFile()
     }
 }
 
-int Response::buildAutoindexBody()
-{
-	std::string indexBody;
-	indexBody = "<h1>Index of " + request.getPath() + "</h1><hr><ul>";
-	DIR* dir = opendir(_file.c_str());
+int Response::buildAutoindexBody() {
+    std::string indexBody;
+    indexBody = "<div class=\"header\"><div class=\"project-name\">Index of " + request.getPath() +
+                "</div><div class=\"logo\"><img alt=\"Home School 42\"src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\"></div></div>";
+    DIR* dir = opendir(_file.c_str());
     if (!dir) {
         std::cerr << "Error opening directory" << std::endl;
         return 404;
     }
     struct dirent* entry;
+    std::string path = request.getPath();
+    path = path == "/" ? "" : path;
+    indexBody.append("<div class=\"content\"><table class=\"table\"><thead><tr><th>Name</th><th>Last Modified</th><th>File Size (bytes)</th></tr></thead><tbody>");
     while ((entry = readdir(dir)) != nullptr) {
-        indexBody.append("<li><a href=\"" + request.getPath() + "/" + entry->d_name + "\">" + entry->d_name + "</a></li>");
+        std::string entryPath = _file + "/" + entry->d_name;
+        struct stat fileStat;
+        if (stat(entryPath.c_str(), &fileStat) == -1) {
+            std::cerr << "Error getting file stat" << std::endl;
+            continue; // Skip this entry if stat fails
+        }
+        std::string classAttribute = S_ISDIR(fileStat.st_mode) ? "class=\"folder\"" : "class=\"file\"";
+        std::string name = entry->d_name;
+        std::string lastModified = "-";
+        std::string fileSize = "-";
+        if (S_ISREG(fileStat.st_mode)) { // If it's a regular file, get size and last modified date
+            size_t size = fileStat.st_size;
+            struct tm* modifiedTime = localtime(&fileStat.st_mtime);
+            char modifiedTimeString[100];
+            strftime(modifiedTimeString, sizeof(modifiedTimeString), "%Y-%m-%d %H:%M:%S", modifiedTime);
+            lastModified = modifiedTimeString;
+            fileSize = std::to_string(size);
+        }
+        indexBody.append("<tr " + classAttribute + "><td><a href=\"" + path + "/" + entry->d_name + "\">" + name + "</a></td><td>" + lastModified + "</td><td>" + fileSize + "</td></tr>");
     }
+    indexBody.append("</tbody></table></div>");
     closedir(dir);
-	buildHTML("Index of " + request.getPath(), indexBody);
-	return 0;
+    buildHTML("Index of " + request.getPath(), indexBody);
+    return 0;
 }
+
+
 
 int Response::setCorrectPath()
 {
@@ -128,6 +145,17 @@ int Response::setCorrectPath()
 	for (std::map<std::string, Location>::iterator it = locations.begin(); it != locations.end(); it++)
 	{
 		std::string locationPath = it->first;
+		if ((request.getMethod() == "POST" || request.getMethod() == "PUT") && locationPath.find("/*.") == 0)
+		{
+			locationPath = locationPath.substr(2);
+			if (path.find(locationPath) ==  (path.length() - locationPath.length()))
+			{
+				std::cout << "found path" << std::endl;
+				_location = it->second;
+				return 0;
+			}
+		}
+		locationPath = it->first;
 		if (path.find(locationPath) == 0)
 		{
 			if (path == locationPath || locationPath == "/" || (path.length() > locationPath.length() &&  path[locationPath.length()] == '/'))
@@ -135,7 +163,7 @@ int Response::setCorrectPath()
 				std::string locationTempNew;
 				_location = it->second;
 				locationTempNew = it->first;
-				std::string finalPath = _location.getRoot() + path.substr(locationPath.length());
+				std::string finalPath = _location.getRoot() + (locationPath == "/" ? path : path.substr(locationPath.length()));
 				if (locationTempNew.length() > locationTemp.length())
 				{
 					_location = it->second;
@@ -144,7 +172,7 @@ int Response::setCorrectPath()
 			}
 		}
 	}
-	std::vector<std::string> limitExcept = _location.getLimitExcept();
+	std::set<std::string> limitExcept = _location.getLimitExcept();
 	if (std::find(limitExcept.begin(), limitExcept.end(), request.getMethod()) == limitExcept.end())
 		return 405;
 	if (_location.getReturn().first != -1)
@@ -154,7 +182,14 @@ int Response::setCorrectPath()
 
 int Response::uploadFile()
 {
-	return 0;
+	if (isDirectory(_file))
+		_file += "/uploaded.jpeg";
+	if (rename(FILE_PATH, _file.c_str()) == 0) {
+        std::cout << "File moved successfully." << std::endl;
+    } else {
+        std::cerr << "Error moving file." << std::endl;
+    }
+	return 201;
 }
 
 int Response::buildBody()
@@ -164,8 +199,6 @@ int Response::buildBody()
 		return code;
 	if (request.getMethod() == "DELETE")
 		return deleteFile();
-	// if (request.getMethod() == "PUT")
-	// 	return uploadFile();
 	if (request.getBytesRead() > _location.getClientMaxBodySize())
 		return 413;
 	if (_location.getAutoindex() && isDirectory(_file))
@@ -185,8 +218,6 @@ int Response::buildBody()
 				return _code;
 		}
 		return _code;
-		// if (_body.empty())
-		// 	return 404;
 	}
 	else 
 	{
