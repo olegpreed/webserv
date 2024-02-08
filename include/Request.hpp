@@ -29,12 +29,13 @@ enum Status
 enum ChunkStatus
 {
 	CHUNK_SIZE,
-	CHUNK_DATA
+	CHUNK_DATA,
+	FINAL_ZERO
 };
 
 #define MAX_PATH_LENGTH 2048
 #define MAX_CHUNK_SIZE 65536
-#define FILE_PATH "file.jpeg"
+#define FILE_PATH "file.txt"
 #define BODY_BUFFER_LENGTH 100000
 
 class Request {

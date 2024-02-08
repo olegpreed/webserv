@@ -7,6 +7,7 @@ Request::Request()
 	_readComplete = false;
 	_bytesRead = 0;
 	_errorCode = 0;
+	_chunkSize = -1;
 	_fileFd = -1;
 }
 
@@ -350,8 +351,8 @@ int Request::writeToFile()
 		std::cout << "Error writing to file" << std::endl;
 		return 1;
 	}
-	else 
-		std::cout << bytesWritten << std::endl;
+	// else 
+	// 	std::cout << bytesWritten << std::endl;
 	if (fsync(_fileFd) == -1) {
         // Handle error if fsync fails
     	return 1;
@@ -375,9 +376,10 @@ int Request::parseBody()
 		_bytesRead += _buffer.length();
 		_buffer.clear();
 	}
-	if (_readComplete && _bytesRead != _bodySize)
-		return 400;
-	else if (_readComplete && _bytesRead == _bodySize)
+	// if (_readComplete && _bytesRead != _bodySize)
+	// 	return 400;
+	// if (_readComplete && _bytesRead == _bodySize)
+	if (_bytesRead == _bodySize)
 	{
 		if (writeToFile())
 			return 500;
@@ -390,15 +392,33 @@ int Request::parseBody()
 
 int Request::parseChunks()
 {
-	std::cout << "parseChunks: " << _path << " chunk: " << _buffer << std::endl;
+	// std::cout << _buffer << std::endl;
+	// std::cout << _chunkSize << std::endl;
 	size_t pos = _buffer.find("\r\n");
-	if (_readComplete && pos == std::string::npos && _buffer.length() != 0)
-		return 400;
-	else if (_readComplete && pos == std::string::npos && _buffer.length() == 0)
+	// if (_readComplete && pos == std::string::npos && _buffer.length() != 0)
+	// 	return 400;
+	// else if (_readComplete && pos == std::string::npos && _buffer.length() == 0)
+	// {
+	// 	std::cout << "finished!" << std::endl;
+	// 	_status = DONE;
+	// 	return 0;
+	// }
+	if (_chunkStatus == FINAL_ZERO)
 	{
-		std::cout << "finished!" << std::endl;
-		_status = DONE;
-		return 0;
+		if (_buffer.length() < 4)
+			return 0;
+		else if (_buffer.length() > 4 || (_buffer.length() == 4 && _buffer != "\r\n\r\n"))
+			return 400;
+		else
+		{
+			_status = DONE;
+			if (_bodyBuffer.length() > 0)
+			{
+				if (writeToFile())
+					return 500;
+			}
+			return 0;
+		}
 	}
 	while (pos != std::string::npos || _chunkStatus == CHUNK_DATA)
 	{
@@ -408,10 +428,16 @@ int Request::parseChunks()
 				_chunkSize = std::stoll(_buffer.substr(0, pos), nullptr, 16);
 				if (_chunkSize == 0)
 				{
-					if (!_readComplete)
+					// if (!_readComplete)
+					// 	return 0;
+					while (_buffer.find("\r\n") != 0)
+						_buffer.erase(0, 1);
+					if (_buffer.length() < 4)
+					{
+						_chunkStatus = FINAL_ZERO;
 						return 0;
-					if (_buffer.find("\r\n\r\n") != pos  
-					|| (_buffer.find("\r\n\r\n") == pos && _buffer.length() != 5))
+					}
+					else if (_buffer.length() > 4 || (_buffer.length() == 4 && _buffer != "\r\n\r\n"))
 						return 400;
 					else
 					{

@@ -21,9 +21,8 @@
 
 void handleRequest(int clientSocket, const ServerConfig &config)
 {
-	char *buff = new char[BUFFSIZE + 1];
-	for (int i = 0; i < BUFFSIZE + 1; i++)
-		buff[i] = '\0';
+	char *buff = new char[BUFFSIZE];
+	memset(buff, 0, BUFFSIZE);
 	ssize_t bytesRead;
 	Request *request = new Request();
 	Response response;
@@ -39,7 +38,7 @@ void handleRequest(int clientSocket, const ServerConfig &config)
 	while (true)
 	{
 		bytesRead = recv(clientSocket, buff, BUFFSIZE, 0);
-		std::cout << buff << " bytes read: " << bytesRead << std::endl;
+		// std::cout << buff << " bytes read: " << bytesRead << std::endl;
 		if (bytesRead < 0)
 		{
 			// Handle non-blocking error.
@@ -56,12 +55,12 @@ void handleRequest(int clientSocket, const ServerConfig &config)
 				break;
 			}
 		}
-		if (bytesRead < BUFFSIZE)
-			request->setReadComplete(true);
+		// if (bytesRead == 0)
+		// 	request->setReadComplete(true);
 		std::string chunk(buff, bytesRead);
 		if (request->parse(chunk) || request->isParsingComplete())
 			break;
-		memset(buff, 0, BUFFSIZE + 1);
+		memset(buff, 0, BUFFSIZE);
 	}
 	// std::cout << *request << std::endl;
 	// size_t found = 0;
