@@ -12,7 +12,7 @@ body {
 	justify-content: space-between;
 	align-items: center;
 	padding: 0px 50px 0px 50px;
-	height: 60px;
+	height: 80px;
 }
 
 .logo {
@@ -122,18 +122,14 @@ tr.file a::before {
 	font-weight: 900;
 }
 
-.error-image {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.error-image img {
-	height: 150px;
+.error-gif {
+	height: 199px;
 	width: auto;
+	border: 0;
 }
 
 .error-message {
+	padding-top: 20px;
 	font-size: 30px;
 	font-weight: 900;
 }

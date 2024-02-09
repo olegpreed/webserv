@@ -123,7 +123,6 @@ std::ostream &operator<<(std::ostream &os, const Request &request)
 
 bool isPathWithinCurrentFolder(const std::string &path)
 {
-	// add check for /./././../secretFiles
 	if (path.find("/../") == 0)
 		return false;
 	int depth = 0;
@@ -145,14 +144,14 @@ bool isPathWithinCurrentFolder(const std::string &path)
 	return true;
 }
 
-std::string simplifyPath(const std::string& path) {
-    std::istringstream iss(path);
+void Request::simplifyPath() {
+    std::istringstream iss(_path);
     std::vector<std::string> tokens;
     std::string token;
 
     // Split the path into tokens
     while (std::getline(iss, token, '/')) {
-        if (!token.empty() && token != ".") {
+        if (!token.empty()) {
             if (token == ".." && !tokens.empty()) {
                 // If token is ".." and there are directories in tokens, pop the last directory
                 tokens.pop_back();
@@ -162,84 +161,60 @@ std::string simplifyPath(const std::string& path) {
             }
         }
     }
-
     // Reconstruct the simplified path
 	std::stack<std::string> dirs; // <----
 	for (std::vector<std::string>::iterator it = tokens.begin(); it != tokens.end(); it++)
 		dirs.push(*it);
-    // std::stack<std::string> dirs;
-    // for (const auto& dir : tokens) {
-    //     dirs.push(dir);
-    // }
-
     std::string simplifiedPath;
     while (!dirs.empty()) {
         simplifiedPath = '/' + dirs.top() + simplifiedPath;
         dirs.pop();
     }
-
     // Handle the case when the path is empty (root directory)
-    return simplifiedPath.empty() ? "/" : simplifiedPath;
+    _path = simplifiedPath.empty() ? "/" : simplifiedPath;
+}
+
+void Request::removeCurrentDirDots()
+{
+	size_t pos;
+	while ((pos = _path.find("/./")) != std::string::npos)
+		_path.erase(pos, 2);
 }
 
 int Request::parseRequestLine()
 {
 	size_t pos = _buffer.find_first_not_of("\r\n");  
-	_buffer.erase(0, pos);								// removes all the possible new lines at the beginning of the request
-	if (_buffer.find("\r\n") != std::string::npos) 	// checks that we have the full first line of the request
+	_buffer.erase(0, pos);
+	if (_buffer.find("\r\n") != std::string::npos)
 	{
 		std::istringstream buffer(_buffer);
-		buffer >> _method;					// parses the first line of the request
-		size_t ptrIdx1 = buffer.tellg(); 
-		if (ptrIdx1 != _method.length())
-			return 400;
+		buffer >> _method;
 		std::set<std::string>::iterator it = CodesTypes::HTTPMethods.find(_method);
 		if (it == CodesTypes::HTTPMethods.end())
 			return 501;
-		buffer >> _path >> _version;	
+		buffer >> _path >> _version;
 		if (_path.length() > MAX_PATH_LENGTH)
 			return 414;
-		if (_path.find("http://") == 0)					// checks if there's full path
-		{
-			size_t pos = _path.find("/", 7);
-			_headers["host"] = _path.substr(7, pos - 7);
-			if ((pos = _headers["host"].find(":")) != std::string::npos) // checks if there's a port number
-			{
-				if (_headers["host"].substr(pos) != ":80")
-					return 400;
-				_headers["host"].erase(pos);
-				_path.erase(0, pos + 10);
-			}
-			else 
-				_path.erase(0, 7 + _headers["host"].length());
-			if (_path.length() == 0)
-				_path = "/";
-		}
-		if (_path[0] == '/') 				// checks that relative path starts with /
+		if (_path[0] != '/')
+			return 400;
+		else 
 		{
 			if (_path.find("?") != std::string::npos)
 			{
 				_query = _path.substr(_path.find("?") + 1);
 				_path.erase(_path.find("?"));
 			}
-			if (!isPathWithinCurrentFolder(_path)) // checks that there is no path exploit
+			removeCurrentDirDots();
+			if (!isPathWithinCurrentFolder(_path))
 				return 403;
 			else 
-				_path = simplifyPath(_path);
+				simplifyPath();
 		}
-		else 
-			return 400;
 		if (_version.find("HTTP/") != 0)
 			return 400;
 		else if (_version != "HTTP/1.1" && _version != "HTTP/1.0")
 			return 505;
-		_version.erase(0, 5);
-
-		size_t ptrIdx2 = buffer.tellg(); 			// checks there is new line right after HTTP version and erases the first line from the buffer
-		if (_buffer.find("\r\n", ptrIdx2) == ptrIdx2)
-			_buffer.erase(0, _buffer.find("\r\n") + 2);
-		else
-			return 400;
+		_buffer.erase(0, _buffer.find("\r\n") + 2);
 		_status = HEADERS;
 	}
 	return 0;
@@ -392,17 +367,7 @@ int Request::parseBody()
 
 int Request::parseChunks()
 {
-	// std::cout << _buffer << std::endl;
-	// std::cout << _chunkSize << std::endl;
 	size_t pos = _buffer.find("\r\n");
-	// if (_readComplete && pos == std::string::npos && _buffer.length() != 0)
-	// 	return 400;
-	// else if (_readComplete && pos == std::string::npos && _buffer.length() == 0)
-	// {
-	// 	std::cout << "finished!" << std::endl;
-	// 	_status = DONE;
-	// 	return 0;
-	// }
 	if (_chunkStatus == FINAL_ZERO)
 	{
 		if (_buffer.length() < 4)
@@ -428,8 +393,6 @@ int Request::parseChunks()
 				_chunkSize = std::stoll(_buffer.substr(0, pos), nullptr, 16);
 				if (_chunkSize == 0)
 				{
-					// if (!_readComplete)
-					// 	return 0;
 					while (_buffer.find("\r\n") != 0)
 						_buffer.erase(0, 1);
 					if (_buffer.length() < 4)
@@ -437,7 +400,8 @@ int Request::parseChunks()
 						_chunkStatus = FINAL_ZERO;
 						return 0;
 					}
-					else if (_buffer.length() > 4 || (_buffer.length() == 4 && _buffer != "\r\n\r\n"))
+					else if (_buffer.length() > 4 
+					|| (_buffer.length() == 4 && _buffer != "\r\n\r\n"))
 						return 400;
 					else
 					{
