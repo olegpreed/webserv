@@ -56,13 +56,29 @@ void Response::buildErrorBody()
 		_body.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 }
 
+bool fileExists(const char* filename) {
+    struct stat buffer;
+    return (stat(filename, &buffer) == 0);
+}
+
+bool hasReadPermissions(const char* filename) {
+    struct stat buffer;
+    if (stat(filename, &buffer) == 0) {
+        return (buffer.st_mode & S_IRUSR);
+    }
+    return false;
+}
+
 int Response::buildFileBody(std::ifstream &file)
 {
 	if ((request.getMethod() == "POST" || request.getMethod() == "PUT")
 		&& _location.getCgiPass() != "")
 		return executeCGI();
-	else if (!file.is_open())
-		return 404;
+	else if (!fileExists(_file.c_str())) {
+        return 404;
+    } else if (!hasReadPermissions(_file.c_str())) {
+        return 403;
+	}
 	else
 	{
 		if ((request.getMethod() == "POST" || request.getMethod() == "PUT")
