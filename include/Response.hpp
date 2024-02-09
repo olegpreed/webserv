@@ -26,6 +26,7 @@ class Response
 		Response();
 		void buildResponse();
 		void buildErrorBody();
+		void buildErrorHTMLBody();
 		int buildAutoindexBody();
 		void buildHTML(const std::string &pageTitle, const std::string &pageBody);
 		int buildBody();

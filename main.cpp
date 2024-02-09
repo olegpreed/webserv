@@ -38,7 +38,7 @@ void handleRequest(int clientSocket, const ServerConfig &config)
 	while (true)
 	{
 		bytesRead = recv(clientSocket, buff, BUFFSIZE, 0);
-		// std::cout << buff << " bytes read: " << bytesRead << std::endl;
+		std::cout << "Reading " << bytesRead << "from socket" << std::endl;
 		if (bytesRead < 0)
 		{
 			// Handle non-blocking error.
@@ -55,6 +55,11 @@ void handleRequest(int clientSocket, const ServerConfig &config)
 				break;
 			}
 		}
+		else if (bytesRead == 0)
+		{
+			close(clientSocket);
+			return;
+		}
 		// if (bytesRead == 0)
 		// 	request->setReadComplete(true);
 		std::string chunk(buff, bytesRead);
@@ -62,7 +67,7 @@ void handleRequest(int clientSocket, const ServerConfig &config)
 			break;
 		memset(buff, 0, BUFFSIZE);
 	}
-	// std::cout << *request << std::endl;
+	std::cout << *request << std::endl;
 	// size_t found = 0;
 	// while ((found = saveRequest.find("\r\n", found)) != std::string::npos) {
 	//     saveRequest.replace(found, 2, "\\r\\n");
@@ -176,8 +181,8 @@ int main(int argc, char *argv[])
 	if (createServerConfig(argc, argv, server_config))
 		return 1;
 	// Printing config values
-	if (printServerConfig(server_config))
-		return 1;
+	// if (printServerConfig(server_config))
+	// 	return 1;
 
 	// -----> * SERVER PART STARTS HERE * < -----
 

@@ -34,7 +34,16 @@ std::string Response::getCodeMessage()
 
 void Response::buildHTML(const std::string &pageTitle, const std::string &pageBody)
 {
-	_body = "<html><head><link rel=\"stylesheet\" href=\"styles.css\"><title>" + pageTitle + "</title></head><body>" + pageBody + "</body></html>";
+	_body = "<html><head><link rel=\"stylesheet\" href=\"/styles.css\"><title>" + pageTitle + "</title></head><body>" + pageBody + "</body></html>";
+}
+
+void Response::buildErrorHTMLBody()
+{
+	std::string errorBody = "<div class=\"header\"><div class=\"project-name\">WEBSERV</div>" + std::string()
+		+ "<div class=\"logo\"><a href=\"/\"><img alt=\"Home School 42\" src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">"
+		+ "</a></div></div><div class=\"content\"><div class=\"error-code\">" + std::to_string(_code) 
+		+ "</div><div class=\"error-message\">" + CodesTypes::codeMessages.at(_code)+ "</div></div>";
+	buildHTML(std::to_string(_code), errorBody);
 }
 
 void Response::buildErrorBody()
@@ -44,14 +53,12 @@ void Response::buildErrorBody()
 		filename = _config.getErrorPage().at(_code);
 	}
 	catch (std::out_of_range &e) {
-		buildHTML(std::to_string(_code), getCodeMessage());
+		buildErrorHTMLBody();
 		return;
 	}
 	std::ifstream file(filename);
 	if (!file.is_open())
-	{
-		buildHTML(std::to_string(_code), getCodeMessage());
-	}
+		buildErrorHTMLBody();
 	else
 		_body.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 }
@@ -114,7 +121,7 @@ int Response::deleteFile()
 int Response::buildAutoindexBody() {
     std::string indexBody;
     indexBody = "<div class=\"header\"><div class=\"project-name\">Index of " + request.getPath() +
-                "</div><div class=\"logo\"><img alt=\"Home School 42\"src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\"></div></div>";
+                "</div><div class=\"logo\"><a href=\"/\"><img alt=\"Home School 42\"src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\"></a></div></div>";
     DIR* dir = opendir(_file.c_str());
     if (!dir) {
         std::cerr << "Error opening directory" << std::endl;
@@ -125,6 +132,8 @@ int Response::buildAutoindexBody() {
     path = path == "/" ? "" : path;
     indexBody.append("<div class=\"content\"><table class=\"table\"><thead><tr><th>Name</th><th>Last Modified</th><th>File Size (bytes)</th></tr></thead><tbody>");
     while ((entry = readdir(dir)) != nullptr) {
+		if ((entry->d_name[0] == '.' && strcmp(entry->d_name, "..") != 0) || strcmp(entry->d_name, ".") == 0)
+			continue;
         std::string entryPath = _file + "/" + entry->d_name;
         struct stat fileStat;
         if (stat(entryPath.c_str(), &fileStat) == -1) {
