@@ -209,7 +209,7 @@ int Response::uploadFile()
 {
 	if (isDirectory(_file))
 		_file += "/uploaded.jpeg";
-	if (rename(FILE_PATH, _file.c_str()) == 0) {
+	if (rename(request.getTempFilePath().c_str(), _file.c_str()) == 0) {
         std::cout << "File moved successfully." << std::endl;
     } else {
         std::cerr << "Error moving file." << std::endl;

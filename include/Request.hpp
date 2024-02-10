@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <uuid/uuid.h>
 #include <unistd.h>
 
 #include "CodesTypes.hpp"
@@ -34,9 +35,9 @@ enum ChunkStatus
 };
 
 #define MAX_PATH_LENGTH 2048
+#define MAX_BODY_SIZE 2000000000
 #define MAX_CHUNK_SIZE 65536
-#define FILE_PATH "file.txt"
-#define BODY_BUFFER_LENGTH 1000000
+#define BODY_BUFFER_LENGTH 100000
 
 class Request
 {
@@ -46,7 +47,8 @@ private:
 	std::string _version;
 	std::string _query;
 	std::map<std::string, std::string> _headers;
-	int _fileFd;
+	int _tempFileFd;
+	std::string _tempFilePath;
 	ssize_t _bytesRead;
 	bool _parsingComplete;
 	bool _readComplete;
@@ -76,6 +78,7 @@ public:
 	const std::string &getPath() const;
 	const std::string &getVersion() const;
 	const std::string &getQuery() const;
+	const std::string &getTempFilePath() const;
 	int getFileFd() const;
 	int writeToFile();
 	ssize_t getBytesRead() const;

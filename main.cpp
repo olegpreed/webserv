@@ -16,7 +16,7 @@
 #define RED "\033[1;31m"
 #define RESET_RED "\033[0m"
 
-#define BUFFSIZE 100000
+#define BUFFSIZE 100
 #define PORT 8080
 
 void handleRequest(int clientSocket, const ServerConfig &config)
