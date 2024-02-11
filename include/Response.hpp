@@ -10,6 +10,7 @@
 #include <algorithm>
 #include "Request.hpp"
 #include "Config.hpp"
+#include "CGIInterface.hpp"
 
 class Response 
 {
@@ -33,7 +34,7 @@ class Response
 		void buildStatusLine();
 		void buildHeaders();
 		int buildFileBody(std::ifstream &file);
-		int setCorrectPath();
+		int setLocation();
 		int deleteFile();
 		int uploadFile();
 		int executeCGI();

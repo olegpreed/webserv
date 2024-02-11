@@ -4,20 +4,14 @@ Request::Request()
 {
 	_status = REQUEST_LINE;
 	_chunkStatus = CHUNK_SIZE;
-	_readComplete = false;
 	_bytesRead = 0;
-	_errorCode = 0;
-	_chunkSize = -1;
 	_tempFileFd = -1;
 }
 
 Request::~Request()
 {
 	if (_tempFileFd != -1)
-	{
-		fsync(_tempFileFd);
 		close(_tempFileFd);
-	}
 }
 
 Request::Request(const Request &src)
@@ -29,7 +23,6 @@ Request &Request::operator=(const Request &src)
 {
 	if (this != &src)
 	{
-		_status = src._status;
 		_method = src._method;
 		_path = src._path;
 		_version = src._version;
@@ -37,10 +30,14 @@ Request &Request::operator=(const Request &src)
 		_headers = src._headers;
 		_tempFileFd = src._tempFileFd;
 		_tempFilePath = src._tempFilePath;
-		_buffer = src._buffer;
+		_chunkSize = src._chunkSize;
 		_bodySize = src._bodySize;
+		_bytesRead = src._bytesRead;
+		_buffer = src._buffer;
+		_bodyBuffer = src._bodyBuffer;
 		_errorCode = src._errorCode;
-		_parsingComplete = src._parsingComplete;
+		_status = src._status;
+		_chunkStatus = src._chunkStatus;
 	}
 	return *this;
 }
@@ -49,12 +46,6 @@ bool Request::isParsingComplete() const
 {
 	return (_status == DONE);
 }
-
-void Request::setReadComplete(bool readComplete)
-{
-	_readComplete = readComplete;
-}
-
 const std::string &Request::getMethod() const
 {
 	return _method;
@@ -67,50 +58,29 @@ const std::string &Request::getVersion() const
 {
 	return _version;
 }
-
 const std::string &Request::getQuery() const
 {
 	return _query;
 }
-
 const std::map<std::string, std::string> &Request::getHeaders() const
 {
 	return _headers;
 }
-
-int Request::getFileFd() const
+int Request::getTempFileFd() const
 {
 	return _tempFileFd;
 }
-
-ssize_t Request::getBytesRead() const
-{
-	return _bytesRead;
-}
-
 const std::string &Request::getTempFilePath() const
 {
 	return _tempFilePath;
 }
-
+ssize_t Request::getBytesRead() const
+{
+	return _bytesRead;
+}
 int Request::getErrorCode() const
 {
 	return _errorCode;
-}
-
-void Request::setPath(const std::string &path)
-{
-	_path = path;
-}
-
-void Request::setStatus(Status status)
-{
-	_status = status;
-}
-
-Status Request::getStatus() const
-{
-	return _status;
 }
 
 std::ostream &operator<<(std::ostream &os, const Request &request)
@@ -119,9 +89,11 @@ std::ostream &operator<<(std::ostream &os, const Request &request)
 	std::cout << "Path: " << request.getPath() << std::endl;
 	std::cout << "Version: " << request.getVersion() << std::endl;
 	std::cout << "Query: " << request.getQuery() << std::endl;
-	std::cout << "FD: " << request.getFileFd() << std::endl;
+	std::cout << "FD: " << request.getTempFileFd() << std::endl;
+	std::cout << "Temp File Path: " << request.getTempFilePath() << std::endl;
 	std::cout << "Error: " << request.getErrorCode() << std::endl;
-	for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin(); it != request.getHeaders().end(); ++it)
+	for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin();
+		it != request.getHeaders().end(); ++it)
 	{
 		std::cout << it->first << ":" << it->second << std::endl;
 	}
@@ -185,19 +157,13 @@ void Request::simplifyPath()
 		if (!token.empty())
 		{
 			if (token == ".." && !tokens.empty())
-			{
-				// If token is ".." and there are directories in tokens, pop the last directory
 				tokens.pop_back();
-			}
 			else if (token != "..")
-			{
-				// Add valid directory names to tokens
 				tokens.push_back(token);
-			}
 		}
 	}
 	// Reconstruct the simplified path
-	std::stack<std::string> dirs; // <----
+	std::stack<std::string> dirs;
 	for (std::vector<std::string>::iterator it = tokens.begin(); it != tokens.end(); it++)
 		dirs.push(*it);
 	std::string simplifiedPath;
@@ -219,17 +185,16 @@ void Request::removeCurrentDirDots()
 
 int Request::createTempFile()
 {
-	// Generate a unique identifier (UUID)
 	uuid_t uuid;
 	uuid_generate(uuid);
 	char uuid_str[37];
 	uuid_unparse(uuid, uuid_str);
 
-	// Construct unique filename
 	std::stringstream ss;
 	ss << "temp_" << uuid_str;
 	_tempFilePath = ss.str();
-	_tempFileFd = open(_tempFilePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	_tempFileFd = open(_tempFilePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 
+		S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	if (_tempFileFd == -1)
 		return 500;
 	return 0;
@@ -242,11 +207,6 @@ int Request::writeToFile()
 	if (bytesWritten == -1)
 	{
 		std::cout << "Error writing to file" << std::endl;
-		return 1;
-	}
-	// std::cout << bytesWritten << std::endl;
-	if (fsync(_tempFileFd) == -1)
-	{
 		return 1;
 	}
 	return 0;
@@ -331,7 +291,8 @@ int Request::parseHeaders()
 
 int Request::beforeParseBody()
 {
-	if (_headers.find("transfer-encoding") != _headers.end() && _headers["transfer-encoding"] == "chunked")
+	if (_headers.find("transfer-encoding") != _headers.end() 
+		&& _headers["transfer-encoding"] == "chunked")
 	{
 		_status = CHUNKS;
 		return createTempFile();
@@ -384,6 +345,7 @@ int Request::parseBody()
 		if (writeToFile())
 			return 500;
 		_status = DONE;
+		_buffer.clear();
 		return 0;
 	}
 	else if (_bytesRead > _bodySize)
@@ -391,164 +353,52 @@ int Request::parseBody()
 	return 0;
 }
 
-// int Request::parseChunks()
-// {
-// 	size_t pos = _buffer.find("\r\n");
-// 	if (_chunkStatus == FINAL_ZERO)
-// 	{
-// 		if (_buffer.length() < 4)
-// 			return 0;
-// 		else if (_buffer.length() > 4 || (_buffer.length() == 4 && _buffer != "\r\n\r\n"))
-// 			return 400;
-// 		else
-// 		{
-// 			_status = DONE;
-// 			if (_bodyBuffer.length() > 0)
-// 			{
-// 				if (writeToFile())
-// 					return 500;
-// 			}
-// 			return 0;
-// 		}
-// 	}
-// 	while (pos != std::string::npos || _chunkStatus == CHUNK_DATA)
-// 	{
-// 		if (_chunkStatus == CHUNK_SIZE)
-// 		{
-// 			try
-// 			{
-// 				_chunkSize = std::stoi(_buffer.substr(0, pos), nullptr, 16);
-// 				if (_chunkSize == 0)
-// 				{
-// 					while (_buffer.find("\r\n") != 0)
-// 						_buffer.erase(0, 1);
-// 					if (_buffer.length() < 4)
-// 					{
-// 						_chunkStatus = FINAL_ZERO;
-// 						return 0;
-// 					}
-// 					else if (_buffer.length() > 4 || (_buffer.length() == 4 && _buffer != "\r\n\r\n"))
-// 						return 400;
-// 					else
-// 					{
-// 						_status = DONE;
-// 						if (_bodyBuffer.length() > 0)
-// 						{
-// 							if (writeToFile())
-// 								return 500;
-// 						}
-// 						return 0;
-// 					}
-// 				}
-// 				_buffer.erase(0, pos + 2);
-// 				_chunkStatus = CHUNK_DATA;
-// 			}
-// 			catch (const std::invalid_argument &e)
-// 			{
-// 				return 400;
-// 			}
-// 			catch (const std::out_of_range &e)
-// 			{
-// 				return 400;
-// 			}
-// 		}
-// 		if (_chunkStatus == CHUNK_DATA)
-// 		{
-// 			pos = _buffer.find("\r\n");
-// 			if ((pos != std::string::npos && pos != _chunkSize) 
-// 			|| (pos == std::string::npos && _buffer.length() > _chunkSize))
-// 				return 400;
-// 			if (_bodyBuffer.length() + _buffer.length() > BODY_BUFFER_LENGTH)
-// 			{
-// 				if (writeToFile())
-// 					return 500;
-// 			}
-// 			else 
-// 				_bodyBuffer += _buffer.substr(0, pos);
-// 			if (pos != std::string::npos)
-// 			{
-// 				_buffer.erase(0, pos + 2);
-// 				_bytesRead += pos;
-// 				_chunkStatus = CHUNK_SIZE;
-// 				pos = _buffer.find("\r\n");
-// 			}
-// 			else
-// 			{
-// 				_bytesRead += _buffer.length();
-// 				_chunkSize -= _buffer.length();
-// 				_buffer.clear();
-// 				if (_chunkSize == 0)
-// 					_chunkStatus = CHUNK_SIZE;
-// 				break;
-// 			}
-// 		}
-// 	}
-// 	return 0;
-// }
-
 int Request::parseChunks()
 {
 	size_t pos = _buffer.find("\r\n");
 
-	if (_chunkStatus == FINAL_ZERO)
-	{
-		if (_buffer.length() < 4)
-			return 0;
-		else if (_buffer.length() > 4 || (_buffer.length() == 4 && _buffer != "\r\n\r\n"))
-			return 400;
-		else
-		{
-			_status = DONE;
-			if (_bodyBuffer.length() > 0)
-			{
-				if (writeToFile())
-					return 500;
-			}
-			return 0;
-		}
-	}
 	while (pos != std::string::npos || _chunkStatus == CHUNK_DATA)
 	{
 		if (_chunkStatus == CHUNK_SIZE)
 		{
-			try {
-			_chunkSize = std::stoi(_buffer.substr(0, pos), nullptr, 16);
-			}
-			catch (const std::invalid_argument &e) {
-				return 400;
-			}
-			catch (const std::out_of_range &e) {
-				return 400;
-			}
-			if (_chunkSize > MAX_CHUNK_SIZE) {
-				return 413;
-			}
-			else if (_chunkSize == 0)
+			_chunkSize = std::stoi(_buffer.substr(0, pos), 0, 16);
+			if (_chunkSize == 0)
 			{
-				while (_buffer.find("\r\n") != 0)
-					_buffer.erase(0, 1);
-				if (_buffer.length() < 4)
-				{
-					_chunkStatus = FINAL_ZERO;
-					return 0;
-				}
-				else if (_buffer.length() > 4 || (_buffer.length() == 4 && _buffer != "\r\n\r\n"))
-					return 400;
-				else
-				{
-					_status = DONE;
-					if (_bodyBuffer.length() > 0)
-					{
-						if (writeToFile())
-							return 500;
-					}
-					return 0;
-				}
+				_status = DONE;
+				if (!_bodyBuffer.empty() && writeToFile())
+					return 500;
+				_buffer.clear();
+				return 0;
 			}
+			_buffer.erase(0, pos + 2);
+			_chunkStatus = CHUNK_DATA;
 		}
 		if (_chunkStatus == CHUNK_DATA)
 		{
-			
+			if (static_cast<int>(_buffer.length()) >= _chunkSize + 2)
+			{
+				_bodyBuffer += _buffer.substr(0, _chunkSize);
+				_bytesRead += _chunkSize;
+				_buffer.erase(0, _chunkSize + 2);
+				_chunkStatus = CHUNK_SIZE;
+				pos = _buffer.find("\r\n");
+			}
+			else
+			{
+				if (static_cast<int>(_buffer.length()) == _chunkSize + 1
+				|| static_cast<int>(_buffer.length()) == _chunkSize)
+					return 0;
+				_bodyBuffer += _buffer;
+				_bytesRead += _buffer.length();
+				_chunkSize -= _buffer.length();
+				_buffer.clear();
+				return 0;
+			}
+			if (_bodyBuffer.length() > BODY_BUFFER_LENGTH)
+			{
+				if (writeToFile())
+					return 500;
+			}
 		}
 	}
 	return 0;

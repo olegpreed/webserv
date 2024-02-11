@@ -17,7 +17,10 @@ void Response::setConfig(ServerConfig config)
 
 int Response::executeCGI()
 {
-	return 201;
+	std::pair<int, std::string> CGIresponse;
+	CGIInterface::executeCGI(CGIresponse, _location.getCgiPass(), request.getTempFilePath());
+	_body = CGIresponse.second;
+	return CGIresponse.first;
 }
 
 std::string Response::getCodeMessage()
@@ -162,7 +165,7 @@ int Response::buildAutoindexBody() {
 
 
 
-int Response::setCorrectPath()
+int Response::setLocation()
 {
 	std::string locationTemp;
 	std::string path = request.getPath();
@@ -217,41 +220,6 @@ int Response::uploadFile()
 	return 201;
 }
 
-int Response::buildBody()
-{
-	int code;
-	if ((code = setCorrectPath()))
-		return code;
-	if (request.getMethod() == "DELETE")
-		return deleteFile();
-	if (request.getBytesRead() > _location.getClientMaxBodySize())
-		return 413;
-	if (_location.getAutoindex() && isDirectory(_file))
-	{
-		if (buildAutoindexBody())
-			return 404;
-	}
-	else if (!_location.getAutoindex() && isDirectory(_file) && request.getMethod() == "GET")
-	{
-		std::vector<std::string> index = _location.getIndex();
-		std::string filePath = _file;
-		for (std::vector<std::string>::iterator it = index.begin(); it != index.end(); it++)
-		{
-			_file = filePath + "/" + *it;
-			std::ifstream file(_file);
-			if ((_code = buildFileBody(file)) == 200)
-				return _code;
-		}
-		return _code;
-	}
-	else 
-	{
-		std::ifstream file(_file);
-		return buildFileBody(file);
-	}
-	return 200;
-}
-
 void Response::buildStatusLine()
 {	
 	_response = "HTTP/1.1 " + std::to_string(_code) + " " + CodesTypes::codeMessages.at(_code) + "\r\n";
@@ -282,6 +250,41 @@ void Response::buildHeaders()
 	}
 	_response += "Content-Type: " + MIME + "\r\n";
 	_response += "Content-Length: " + std::to_string(_body.length()) + "\r\n\r\n";
+}
+
+int Response::buildBody()
+{
+	int code;
+	if ((code = setLocation()))
+		return code;
+	if (request.getMethod() == "DELETE")
+		return deleteFile();
+	if (request.getBytesRead() > _location.getClientMaxBodySize())
+		return 413;
+	if (_location.getAutoindex() && isDirectory(_file))
+	{
+		if (buildAutoindexBody())
+			return 404;
+	}
+	else if (!_location.getAutoindex() && isDirectory(_file) && request.getMethod() == "GET")
+	{
+		std::vector<std::string> index = _location.getIndex();
+		std::string filePath = _file;
+		for (std::vector<std::string>::iterator it = index.begin(); it != index.end(); it++)
+		{
+			_file = filePath + "/" + *it;
+			std::ifstream file(_file);
+			if ((_code = buildFileBody(file)) == 200)
+				return _code;
+		}
+		return _code;
+	}
+	else 
+	{
+		std::ifstream file(_file);
+		return buildFileBody(file);
+	}
+	return 200;
 }
 
 void Response::buildResponse()

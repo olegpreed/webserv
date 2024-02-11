@@ -230,7 +230,8 @@ void Location::_assignPath(std::string& path, size_t& start, size_t& finish, con
 			+ name + " directive parameter is not defined");
 	start = finish;
 	Config::extractPath(path);
-	Config::validateDirectory(path);
+	// Config::validateDirectory(path);
+	Config::validateFileName(path);
 	path.insert(path.begin(), DOT);
 }
 

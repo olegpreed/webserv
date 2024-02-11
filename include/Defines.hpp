@@ -74,4 +74,17 @@
 #define GB 'G'
 #define MAX_SIZE_GB 10
 
+#define RED "\033[1;31m"
+#define RESET_RED "\033[0m"
+
+#define BUFFSIZE 100
+#define PORT 8080
+
+#define MAX_PATH_LENGTH 2048
+#define MAX_BODY_SIZE 2000000000
+#define MAX_CHUNK_SIZE 65536
+#define BODY_BUFFER_LENGTH 100000
+
+
+
 #endif
