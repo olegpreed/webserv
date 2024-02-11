@@ -81,21 +81,12 @@ bool hasReadPermissions(const char* filename) {
 
 int Response::buildFileBody(std::ifstream &file)
 {
-	if ((request.getMethod() == "POST" || request.getMethod() == "PUT")
-		&& _location.getCgiPass() != "")
-		return executeCGI();
-	else if (!fileExists(_file.c_str())) {
+	if (!fileExists(_fileOrFolder.c_str()))
         return 404;
-    } else if (!hasReadPermissions(_file.c_str())) {
+    else if (!hasReadPermissions(_fileOrFolder.c_str()))
         return 403;
-	}
-	else
-	{
-		if ((request.getMethod() == "POST" || request.getMethod() == "PUT")
-		&& _location.getClientBodyTempPath() != "")
-			return uploadFile();
+	else 
 		_body.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-	}
 	return 200;
 }
 
@@ -110,9 +101,9 @@ static bool isDirectory(const std::string &path)
 
 int Response::deleteFile()
 {
-    if (isDirectory(_file))
+    if (isDirectory(_fileOrFolder))
 		return 403;
-    if (std::remove(_file.c_str()) == 0) {
+    if (std::remove(_fileOrFolder.c_str()) == 0) {
         std::cout << "File deleted successfully.\n" << std::endl;
 		return 204;
     } else {
@@ -123,9 +114,12 @@ int Response::deleteFile()
 
 int Response::buildAutoindexBody() {
     std::string indexBody;
-    indexBody = "<div class=\"header\"><div class=\"project-name\">Index of " + request.getPath() +
-                "</div><div class=\"logo\"><a href=\"/\"><img alt=\"Home School 42\"src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\"></a></div></div>";
-    DIR* dir = opendir(_file.c_str());
+    indexBody.append("<div class=\"header\"><div class=\"project-name\">Index of ");
+	indexBody.append(request.getPath());
+    indexBody.append("</div><div class=\"logo\"><a href=\"/\">");
+	indexBody.append("<img alt=\"Home School 42\"src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">");
+	indexBody.append("</a></div></div>");
+    DIR* dir = opendir(_fileOrFolder.c_str());
     if (!dir) {
         std::cerr << "Error opening directory" << std::endl;
         return 404;
@@ -133,21 +127,23 @@ int Response::buildAutoindexBody() {
     struct dirent* entry;
     std::string path = request.getPath();
     path = path == "/" ? "" : path;
-    indexBody.append("<div class=\"content\"><table class=\"table\"><thead><tr><th>Name</th><th>Last Modified</th><th>File Size (bytes)</th></tr></thead><tbody>");
+    indexBody.append("<div class=\"content\"><table class=\"table\"><thead><tr>");
+	indexBody.append("<th>Name</th><th>Last Modified</th><th>File Size (bytes)</th></tr></thead><tbody>");
     while ((entry = readdir(dir)) != nullptr) {
-		if ((entry->d_name[0] == '.' && strcmp(entry->d_name, "..") != 0) || strcmp(entry->d_name, ".") == 0)
+		if ((entry->d_name[0] == '.' && strcmp(entry->d_name, "..") != 0) 
+		|| strcmp(entry->d_name, ".") == 0)
 			continue;
-        std::string entryPath = _file + "/" + entry->d_name;
+        std::string entryPath = _fileOrFolder + "/" + entry->d_name;
         struct stat fileStat;
         if (stat(entryPath.c_str(), &fileStat) == -1) {
             std::cerr << "Error getting file stat" << std::endl;
-            continue; // Skip this entry if stat fails
+            continue;
         }
         std::string classAttribute = S_ISDIR(fileStat.st_mode) ? "class=\"folder\"" : "class=\"file\"";
         std::string name = entry->d_name;
         std::string lastModified = "-";
         std::string fileSize = "-";
-        if (S_ISREG(fileStat.st_mode)) { // If it's a regular file, get size and last modified date
+        if (S_ISREG(fileStat.st_mode)) {
             size_t size = fileStat.st_size;
             struct tm* modifiedTime = localtime(&fileStat.st_mtime);
             char modifiedTimeString[100];
@@ -155,7 +151,8 @@ int Response::buildAutoindexBody() {
             lastModified = modifiedTimeString;
             fileSize = std::to_string(size);
         }
-        indexBody.append("<tr " + classAttribute + "><td><a href=\"" + path + "/" + entry->d_name + "\">" + name + "</a></td><td>" + lastModified + "</td><td>" + fileSize + "</td></tr>");
+        indexBody.append("<tr " + classAttribute + "><td><a href=\"" + path + "/" + entry->d_name + 
+		"\">" + name + "</a></td><td>" + lastModified + "</td><td>" + fileSize + "</td></tr>");
     }
     indexBody.append("</tbody></table></div>");
     closedir(dir);
@@ -163,56 +160,13 @@ int Response::buildAutoindexBody() {
     return 0;
 }
 
-
-
-int Response::setLocation()
-{
-	std::string locationTemp;
-	std::string path = request.getPath();
-	std::map<std::string, Location> locations = _config.getLocationMap();
-	for (std::map<std::string, Location>::iterator it = locations.begin(); it != locations.end(); it++)
-	{
-		std::string locationPath = it->first;
-		if ((request.getMethod() == "POST" || request.getMethod() == "PUT") && locationPath.find("/*.") == 0)
-		{
-			locationPath = locationPath.substr(2);
-			if (path.find(locationPath) ==  (path.length() - locationPath.length()))
-			{
-				std::cout << "found path" << std::endl;
-				_location = it->second;
-				return 0;
-			}
-		}
-		locationPath = it->first;
-		if (path.find(locationPath) == 0)
-		{
-			if (path == locationPath || locationPath == "/" || (path.length() > locationPath.length() &&  path[locationPath.length()] == '/'))
-			{
-				std::string locationTempNew;
-				_location = it->second;
-				locationTempNew = it->first;
-				std::string finalPath = _location.getRoot() + (locationPath == "/" ? path : path.substr(locationPath.length()));
-				if (locationTempNew.length() > locationTemp.length())
-				{
-					_location = it->second;
-					_file = finalPath;
-				}
-			}
-		}
-	}
-	std::set<std::string> limitExcept = _location.getLimitExcept();
-	if (std::find(limitExcept.begin(), limitExcept.end(), request.getMethod()) == limitExcept.end())
-		return 405;
-	if (_location.getReturn().first != -1)
-		_code = _location.getReturn().first;
-	return 0;
-}
-
 int Response::uploadFile()
 {
-	if (isDirectory(_file))
-		_file += "/uploaded.jpeg";
-	if (rename(request.getTempFilePath().c_str(), _file.c_str()) == 0) {
+	if (isDirectory(_fileOrFolder))
+		return 403;
+	_fileOrFolder = _location.getClientBodyTempPath() + "/" + 
+		request.getPath().substr(_location.getLocationPath().length());
+	if (rename(request.getTempFilePath().c_str(), _fileOrFolder.c_str()) == 0) {
         std::cout << "File moved successfully." << std::endl;
     } else {
         std::cerr << "Error moving file." << std::endl;
@@ -235,12 +189,12 @@ void Response::buildHeaders()
 		return;
 	}
 	std::string MIME;
-	size_t pos = _file.find_last_of(".");
+	size_t pos = _fileOrFolder.find_last_of(".");
 	if (pos == std::string::npos || pos == 0)
 		MIME = "text/html";
 	else
 	{
-		std::string extension = _file.substr(_file.find_last_of("."));
+		std::string extension = _fileOrFolder.substr(_fileOrFolder.find_last_of("."));
 		try {
 			MIME = CodesTypes::MIMEType.at(extension);
 		}
@@ -252,36 +206,91 @@ void Response::buildHeaders()
 	_response += "Content-Length: " + std::to_string(_body.length()) + "\r\n\r\n";
 }
 
-int Response::buildBody()
+int Response::setLocation()
 {
-	int code;
-	if ((code = setLocation()))
-		return code;
+	std::string correctLocationURI;
+	std::string path = request.getPath();
+	std::map<std::string, Location> locations = _config.getLocationMap();
+	for (std::map<std::string, Location>::iterator it = locations.begin(); 
+		it != locations.end(); it++)
+	{
+		std::string locationURI = it->first;
+		if (locationURI.find("/*.") == 0)
+		{
+			locationURI = locationURI.substr(2);
+			if (path.find(locationURI) == (path.length() - locationURI.length()))
+			{
+				_location = it->second;
+				_fileOrFolder.clear();
+				return 0;
+			}
+			continue;
+		}
+		if (path.find(locationURI) == 0)
+		{
+			if (path == locationURI)
+			{
+				_location = it->second;
+				_fileOrFolder = _location.getRoot();
+				return 0;
+			}
+			else if (locationURI == "/"
+				|| (path.length() > locationURI.length() 
+				&& path[locationURI.length()] == '/'))
+			{
+					correctLocationURI = locationURI;
+			}
+		}
+	}
+	_location = locations.at(correctLocationURI);
+	_fileOrFolder = _location.getRoot() + 
+		(correctLocationURI == "/" ? path : path.substr(correctLocationURI.length()));
+	return 0;
+}
+
+int Response::fulfillRequest()
+{
+	if ((_code = setLocation()))
+		return _code;
+	std::set<std::string> limitExcept = _location.getLimitExcept();
+	if (std::find(limitExcept.begin(), limitExcept.end(), request.getMethod())
+		== limitExcept.end())
+		return 405;
+	if (_location.getReturn().first != -1)
+		return _location.getReturn().first;
 	if (request.getMethod() == "DELETE")
 		return deleteFile();
 	if (request.getBytesRead() > _location.getClientMaxBodySize())
 		return 413;
-	if (_location.getAutoindex() && isDirectory(_file))
+	if (_location.getAutoindex() && isDirectory(_fileOrFolder))
 	{
 		if (buildAutoindexBody())
 			return 404;
 	}
-	else if (!_location.getAutoindex() && isDirectory(_file) && request.getMethod() == "GET")
+	else if (!_location.getAutoindex() && isDirectory(_fileOrFolder)
+		&& (request.getMethod() == "GET" || request.getMethod() == "HEAD"))
 	{
 		std::vector<std::string> index = _location.getIndex();
-		std::string filePath = _file;
+		if (index.empty())
+			return 403;
+		std::string folderPath = _fileOrFolder;
 		for (std::vector<std::string>::iterator it = index.begin(); it != index.end(); it++)
 		{
-			_file = filePath + "/" + *it;
-			std::ifstream file(_file);
+			_fileOrFolder = folderPath + "/" + *it;
+			std::ifstream file(_fileOrFolder);
 			if ((_code = buildFileBody(file)) == 200)
 				return _code;
 		}
 		return _code;
 	}
+	else if (!_location.getCgiPass().empty())
+		return executeCGI();
+	else if (_location.getCgiPass().empty() &&
+		(request.getMethod() == "POST" || request.getMethod() == "PUT"))
+		return uploadFile();
 	else 
 	{
-		std::ifstream file(_file);
+		std::ifstream file(_fileOrFolder);
 		return buildFileBody(file);
 	}
 	return 200;
@@ -296,7 +305,7 @@ void Response::buildResponse()
 		buildErrorBody();
 	else 
 	{
-		_code = buildBody();
+		_code = fulfillRequest();
 		if (_code > 399 && _code < 500)
 			buildErrorBody();
 	}

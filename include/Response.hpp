@@ -15,7 +15,7 @@
 class Response 
 {
 	private:
-		std::string _file;
+		std::string _fileOrFolder;
 		std::string _body;
 		std::string _response;
 		ServerConfig _config;
@@ -30,7 +30,7 @@ class Response
 		void buildErrorHTMLBody();
 		int buildAutoindexBody();
 		void buildHTML(const std::string &pageTitle, const std::string &pageBody);
-		int buildBody();
+		int fulfillRequest();
 		void buildStatusLine();
 		void buildHeaders();
 		int buildFileBody(std::ifstream &file);
