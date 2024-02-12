@@ -37,6 +37,7 @@ class Response
 		int setLocation();
 		int deleteFile();
 		int uploadFile();
+		int deleteTempFile();
 		int executeCGI();
 		std::string getCodeMessage();
 		void buildDefaultErrorPage();

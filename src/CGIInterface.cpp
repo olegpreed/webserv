@@ -53,7 +53,7 @@ void CGIInterface::executeCGI(std::pair<int, std::string>& response,
 			const std::string& cgi_pass, const std::string& body_temp_path) {
 	if (_checkFile(response, cgi_pass, 502))
 		return;
-	if (_checkFile(response, body_temp_path, 500))
+	if (!body_temp_path.empty() && _checkFile(response, body_temp_path, 500))
 		return;
 	_execute(response, cgi_pass, body_temp_path, 200);
 }

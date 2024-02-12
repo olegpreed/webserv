@@ -1,9 +1,6 @@
 #include "Response.hpp"
 
-Response::Response()
-{
-	_code = 0;
-}
+Response::Response() {}
 
 const std::string &Response::getResponse()
 {
@@ -18,7 +15,8 @@ void Response::setConfig(ServerConfig config)
 int Response::executeCGI()
 {
 	std::pair<int, std::string> CGIresponse;
-	CGIInterface::executeCGI(CGIresponse, _location.getCgiPass(), request.getTempFilePath());
+	CGIInterface::executeCGI(CGIresponse, _location.getCgiPass(),
+		request.getTempFilePath());
 	_body = CGIresponse.second;
 	return CGIresponse.first;
 }
@@ -37,15 +35,22 @@ std::string Response::getCodeMessage()
 
 void Response::buildHTML(const std::string &pageTitle, const std::string &pageBody)
 {
-	_body = "<html><head><link rel=\"stylesheet\" href=\"/styles.css\"><title>" + pageTitle + "</title></head><body>" + pageBody + "</body></html>";
+	_body.append("<html><head><link rel=\"stylesheet\" href=\"/styles.css\"><title>");
+	_body.append(pageTitle);
+	_body.append("</title></head><body>");
+	_body.append(pageBody);
+	_body.append("</body></html>");
 }
 
 void Response::buildErrorHTMLBody()
 {
-	std::string errorBody = "<div class=\"header\"><div class=\"project-name\">WEBSERV</div>" + std::string()
-		+ "<div class=\"logo\"><a href=\"/\"><img alt=\"Home School 42\" src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">"
-		+ "</a></div></div><div class=\"content\"><div class=\"error-code\">" + std::to_string(_code) 
-		+ "</div><div class=\"error-message\">" + CodesTypes::codeMessages.at(_code)+ "</div></div>";
+	std::string errorBody;
+	errorBody.append("<div class=\"header\"><div class=\"project-name\">WEBSERV</div>");
+	errorBody.append("<div class=\"logo\"><a href=\"/\"><img alt=\"Home School 42\" ");
+	errorBody.append("src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">");
+	errorBody.append("</a></div></div><div class=\"content\"><div class=\"error-code\">");
+	errorBody.append(std::to_string(_code));
+	errorBody.append("</div><div class=\"error-message\">" + CodesTypes::codeMessages.at(_code)+ "</div></div>");
 	buildHTML(std::to_string(_code), errorBody);
 }
 
@@ -63,7 +68,8 @@ void Response::buildErrorBody()
 	if (!file.is_open())
 		buildErrorHTMLBody();
 	else
-		_body.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		_body.assign((std::istreambuf_iterator<char>(file)),
+			std::istreambuf_iterator<char>());
 }
 
 bool fileExists(const char* filename) {
@@ -86,7 +92,8 @@ int Response::buildFileBody(std::ifstream &file)
     else if (!hasReadPermissions(_fileOrFolder.c_str()))
         return 403;
 	else 
-		_body.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		_body.assign((std::istreambuf_iterator<char>(file)),
+			std::istreambuf_iterator<char>());
 	return 200;
 }
 
@@ -117,7 +124,8 @@ int Response::buildAutoindexBody() {
     indexBody.append("<div class=\"header\"><div class=\"project-name\">Index of ");
 	indexBody.append(request.getPath());
     indexBody.append("</div><div class=\"logo\"><a href=\"/\">");
-	indexBody.append("<img alt=\"Home School 42\"src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">");
+	indexBody.append("<img alt=\"Home School 42\"");
+	indexBody.append("src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">");
 	indexBody.append("</a></div></div>");
     DIR* dir = opendir(_fileOrFolder.c_str());
     if (!dir) {
@@ -163,7 +171,10 @@ int Response::buildAutoindexBody() {
 int Response::uploadFile()
 {
 	if (isDirectory(_fileOrFolder))
+	{
+		deleteTempFile();
 		return 403;
+	}
 	_fileOrFolder = _location.getClientBodyTempPath() + "/" + 
 		request.getPath().substr(_location.getLocationPath().length());
 	if (rename(request.getTempFilePath().c_str(), _fileOrFolder.c_str()) == 0) {
@@ -176,7 +187,8 @@ int Response::uploadFile()
 
 void Response::buildStatusLine()
 {	
-	_response = "HTTP/1.1 " + std::to_string(_code) + " " + CodesTypes::codeMessages.at(_code) + "\r\n";
+	_response = "HTTP/1.1 " + std::to_string(_code) 
+		+ " " + CodesTypes::codeMessages.at(_code) + "\r\n";
 }
 
 void Response::buildHeaders()
@@ -248,16 +260,29 @@ int Response::setLocation()
 	return 0;
 }
 
+int Response::deleteTempFile()
+{
+	close(request.getTempFileFd());
+	if (std::remove(request.getTempFilePath().c_str()) != 0) {
+		perror("Error deleting file");
+		return 500;
+	} else {
+		puts("File successfully deleted");
+		return 0;
+	}
+	return 0;
+}
+
 int Response::fulfillRequest()
 {
 	if ((_code = setLocation()))
 		return _code;
 	std::set<std::string> limitExcept = _location.getLimitExcept();
+	if (_location.getReturn().first != -1)
+		return _location.getReturn().first;
 	if (std::find(limitExcept.begin(), limitExcept.end(), request.getMethod())
 		== limitExcept.end())
 		return 405;
-	if (_location.getReturn().first != -1)
-		return _location.getReturn().first;
 	if (request.getMethod() == "DELETE")
 		return deleteFile();
 	if (request.getBytesRead() > _location.getClientMaxBodySize())
@@ -306,7 +331,7 @@ void Response::buildResponse()
 	else 
 	{
 		_code = fulfillRequest();
-		if (_code > 399 && _code < 500)
+		if (_code > 399 && _code < 600)
 			buildErrorBody();
 	}
 	buildStatusLine();
