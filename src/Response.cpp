@@ -1,6 +1,8 @@
 #include "Response.hpp"
 
-Response::Response() {}
+Response::~Response() {
+	// deleteTempFile();
+}
 
 const std::string &Response::getResponse()
 {
@@ -168,13 +170,18 @@ int Response::buildAutoindexBody() {
     return 0;
 }
 
+int Response::deleteTempFile()
+{
+	if (std::remove(request.getTempFilePath().c_str()) != 0)
+		return 500;
+	else
+		return 0;
+}
+
 int Response::uploadFile()
 {
 	if (isDirectory(_fileOrFolder))
-	{
-		deleteTempFile();
 		return 403;
-	}
 	_fileOrFolder = _location.getClientBodyTempPath() + "/" + 
 		request.getPath().substr(_location.getLocationPath().length());
 	if (rename(request.getTempFilePath().c_str(), _fileOrFolder.c_str()) == 0) {
@@ -257,19 +264,6 @@ int Response::setLocation()
 	_location = locations.at(correctLocationURI);
 	_fileOrFolder = _location.getRoot() + 
 		(correctLocationURI == "/" ? path : path.substr(correctLocationURI.length()));
-	return 0;
-}
-
-int Response::deleteTempFile()
-{
-	close(request.getTempFileFd());
-	if (std::remove(request.getTempFilePath().c_str()) != 0) {
-		perror("Error deleting file");
-		return 500;
-	} else {
-		puts("File successfully deleted");
-		return 0;
-	}
 	return 0;
 }
 

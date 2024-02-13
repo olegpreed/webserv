@@ -82,6 +82,11 @@ int Request::getErrorCode() const
 {
 	return _errorCode;
 }
+void Request::setTempFileFd(int tempFileFd) 
+{
+	_tempFileFd = tempFileFd;
+}
+
 
 std::ostream &operator<<(std::ostream &os, const Request &request)
 {
@@ -300,6 +305,7 @@ int Request::beforeParseBody()
 	if (_headers.find("content-length") == _headers.end())
 		return 411;
 	else
+	{
 		try
 		{
 			_bodySize = std::stoi(_headers["content-length"]);
@@ -312,9 +318,8 @@ int Request::beforeParseBody()
 		{
 			return 400;
 		}
-	if (_bodySize > MAX_BODY_SIZE)
-		return 413;
-	else if (_bodySize == 0)
+	}
+	if (_bodySize == 0)
 	{
 		_status = DONE;
 		return 0;

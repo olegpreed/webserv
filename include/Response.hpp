@@ -24,7 +24,7 @@ class Response
 		int _code;
 
 	public:
-		Response();
+		~Response();
 		void buildResponse();
 		void buildErrorBody();
 		void buildErrorHTMLBody();

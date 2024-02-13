@@ -69,6 +69,8 @@ public:
 	int getErrorCode() const;
 	const std::map<std::string, std::string> &getHeaders() const;
 
+	void setTempFileFd(int tempFileFd);
+
 	int parse(const std::string &requestChunk);
 	int parseRequestLine();
 	int parseHeaders();
