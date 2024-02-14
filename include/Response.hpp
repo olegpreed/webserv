@@ -11,21 +11,25 @@
 #include "Request.hpp"
 #include "Config.hpp"
 #include "CGIInterface.hpp"
+#include "utils.hpp"
 
 class Response 
 {
 	private:
 		std::string _fileOrFolder;
 		std::string _body;
+		std::string _CGIHeaders;
 		std::string _response;
 		ServerConfig _config;
 		Location _location;
-		bool _cgi;
+		bool	_isCGI;
 		int _code;
 
 	public:
+		Response();
 		~Response();
 		void buildResponse();
+		void buildCGIResponse();
 		void buildErrorBody();
 		void buildErrorHTMLBody();
 		int buildAutoindexBody();
@@ -40,10 +44,9 @@ class Response
 		int deleteTempFile();
 		int executeCGI();
 		std::string getCodeMessage();
-		void buildDefaultErrorPage();
 		const std::string &getResponse();
+		int checkAndModifyCGIHeaders()
 		void setConfig(ServerConfig config);
-		std::vector<std::string> splitPath();
 		Request request;
 };
 

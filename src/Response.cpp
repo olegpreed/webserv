@@ -1,7 +1,9 @@
 #include "Response.hpp"
 
+Response::Response() : _isCGI(false) {}
+
 Response::~Response() {
-	// deleteTempFile();
+	deleteTempFile();
 }
 
 const std::string &Response::getResponse()
@@ -16,6 +18,7 @@ void Response::setConfig(ServerConfig config)
 
 int Response::executeCGI()
 {
+	_isCGI = true;
 	std::pair<int, std::string> CGIresponse;
 	CGIInterface::executeCGI(CGIresponse, _location.getCgiPass(),
 		request.getTempFilePath());
@@ -207,6 +210,11 @@ void Response::buildHeaders()
 		_response += "Content-Length: " + std::to_string(_body.length()) + "\r\n\r\n";
 		return;
 	}
+	else if (_isCGI)
+	{
+		_response += _CGIHeaders;
+		return;
+	}
 	std::string MIME;
 	size_t pos = _fileOrFolder.find_last_of(".");
 	if (pos == std::string::npos || pos == 0)
@@ -315,6 +323,47 @@ int Response::fulfillRequest()
 	return 200;
 }
 
+int Response::checkAndModifyCGIHeaders()
+{
+	int pos = _CGIHeaders.find("\r\n");
+	int posStart = 0;
+	bool contentTypeExists = false;
+	while (pos != 0)
+	{
+		std::string key, value;
+		pos = _CGIHeaders.find(":");
+		if (pos == std::string::npos)
+			return 1;
+		key = _CGIHeaders.substr(posStart, pos);
+		value = _CGIHeaders.substr(pos + 1);
+		if (hasWhiteSpaces(key))
+			return 1;
+		toLowerCase(key);
+		if (key == "content-type")
+			contentTypeExists = true;
+		return 1;
+		posStart = pos + 2;
+		pos = _CGIHeaders.find("\r\n", posStart);
+	}
+	if (!_body.empty() && !contentTypeExists)
+		return 1;
+	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "Content-length: " + _body.length());
+}
+
+void Response::buildCGIResponse()
+{
+	size_t pos = _body.find("\r\n\r\n");
+	if (pos == std::string::npos || pos == 0)
+	{
+		_code = 500;
+		return;
+	}
+	_CGIHeaders = _body.substr(0, pos + 4);
+	_body = _body.substr(pos + 4);
+	if (checkAndModifyCGIHeaders())
+		_code = 500;
+}
+
 void Response::buildResponse()
 {
 	_code = request.getErrorCode();
@@ -328,7 +377,10 @@ void Response::buildResponse()
 		if (_code > 399 && _code < 600)
 			buildErrorBody();
 	}
+	if (_isCGI)
+		buildCGIResponse();
 	buildStatusLine();
 	buildHeaders();
 	_response += _body;
+	return;
 }

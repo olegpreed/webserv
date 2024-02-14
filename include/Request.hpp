@@ -17,6 +17,7 @@
 
 #include "CodesTypes.hpp"
 #include "Defines.hpp"
+#include "utils.hpp"
 
 enum Status
 {
