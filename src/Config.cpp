@@ -264,3 +264,5 @@ void Config::createServerConfig(const std::string& config_name,
 	_config_content.clear();
 	_buffer.clear();
 }
+
+int Config::fileCounter = 1;

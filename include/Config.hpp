@@ -67,6 +67,8 @@ class Config {
 		struct ReadConfigFileError : public std::runtime_error {
 			ReadConfigFileError(const std::string& message) : std::runtime_error(message) {}
 		};
+
+		static int fileCounter;
 };
 
 #endif

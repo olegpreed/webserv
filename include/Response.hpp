@@ -20,6 +20,7 @@ class Response
 		std::string _fileOrFolder;
 		std::string _body;
 		std::string _CGIHeaders;
+		std::string _tempCGIFilePath;
 		std::string _response;
 		ServerConfig _config;
 		Location _location;
@@ -43,6 +44,7 @@ class Response
 		int deleteFile();
 		int uploadFile();
 		int deleteTempFile();
+		char** initEnv();
 		int executeCGI();
 		std::string getCodeMessage();
 		const std::string &getResponse();

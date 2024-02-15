@@ -16,6 +16,7 @@
 #define DEFAULT "./.config/default.conf"
 
 #define EOT '\x04' // end of transmission
+#define EOF_STR "\0xEOF"
 #define COMMENT_SIGN '#'
 #define SPACE_SIGN ' '
 #define NEW_LINE_SIGN '\n'

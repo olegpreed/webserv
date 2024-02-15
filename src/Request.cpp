@@ -168,18 +168,15 @@ void Request::removeCurrentDirDots()
 
 int Request::createTempFile()
 {
-	uuid_t uuid;
-	uuid_generate(uuid);
-	char uuid_str[37];
-	uuid_unparse(uuid, uuid_str);
-
 	std::stringstream ss;
-	ss << "temp_" << uuid_str;
+	ss << "temp_" << "input_" << Config::fileCounter;
+	Config::fileCounter++;
 	_tempFilePath = ss.str();
 	_tempFileFd = open(_tempFilePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 
 		S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	if (_tempFileFd == -1)
 		return 500;
+
 	return 0;
 }
 

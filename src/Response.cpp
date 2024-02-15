@@ -16,17 +16,19 @@ void Response::setConfig(ServerConfig config)
 	_config = config;
 }
 
-char** _initEnv(const Request &request) {
+char** Response::initEnv() {
 	std::vector<std::string> stringEnvp;
-	stringEnvp.push_back("CONTENT_LENGTH=" + request.getBytesRead());
+	std::stringstream ss;
+	ss << request.getBytesRead();
+	stringEnvp.push_back("CONTENT_LENGTH=" + ss.str());
+	ss.clear();
 	if (request.getHeaders().find("content-type") != request.getHeaders().end())
-	stringEnvp.push_back("CONTENT_TYPE=" + request.getHeaders().at("Content-type"));
+		stringEnvp.push_back("CONTENT_TYPE=" + request.getHeaders().at("content-type"));
 	stringEnvp.push_back("GATEWAY_INTERFACE=CGI/1.1");
 	stringEnvp.push_back("PATH_TRANSLATED=" + request.getPath());
 	stringEnvp.push_back("QUERY_STRING=" + request.getQuery());
 	stringEnvp.push_back("REQUEST_METHOD=" + request.getMethod());
-	stringEnvp.push_back("CONTENT_LENGTH=" + request.getBytesRead());
-	stringEnvp.push_back("CONTENT_LENGTH=" + request.getBytesRead());
+	stringEnvp.push_back("SERVER_PROTOCOL=HTTP/1.1");
 	
 	for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin();
 		it != request.getHeaders().end(); it++) {
@@ -38,7 +40,7 @@ char** _initEnv(const Request &request) {
 		stringEnvp.push_back("HTTP_" + header + "=" + value);
 	}
 	char** envp = new char*[stringEnvp.size() + 1];
-	for (int i = 0; i < stringEnvp.size(); i++) {
+	for (size_t i = 0; i < stringEnvp.size(); i++) {
 		envp[i] = new char[stringEnvp[i].size() + 1];
 		strcpy(envp[i], stringEnvp[i].c_str());
 	}
@@ -49,12 +51,11 @@ char** _initEnv(const Request &request) {
 int Response::executeCGI()
 {
 	_isCGI = true;
-	_initEnv(request);
 	std::pair<int, std::string> CGIresponse;
-	CGIInterface::executeCGI(CGIresponse, _location.getCgiPass(),
+	CGIInterface::executeCGI(CGIresponse, initEnv(), _location.getCgiPass(),
 		request.getTempFilePath());
-	_body = CGIresponse.second;
-	// return 200;
+	// _tempCGIFilePath = CGIresponse.second;
+	_tempCGIFilePath = "CGI_response";
 	return CGIresponse.first;
 }
 
@@ -86,9 +87,9 @@ void Response::buildErrorHTMLBody()
 	errorBody.append("<div class=\"logo\"><a href=\"/\"><img alt=\"Home School 42\" ");
 	errorBody.append("src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">");
 	errorBody.append("</a></div></div><div class=\"content\"><div class=\"error-code\">");
-	errorBody.append(std::to_string(_code));
+	errorBody.append(intToString(_code));
 	errorBody.append("</div><div class=\"error-message\">" + CodesTypes::codeMessages.at(_code)+ "</div></div>");
-	buildHTML(std::to_string(_code), errorBody);
+	buildHTML(intToString(_code), errorBody);
 }
 
 void Response::buildErrorBody()
@@ -194,7 +195,7 @@ int Response::buildAutoindexBody() {
             char modifiedTimeString[100];
             strftime(modifiedTimeString, sizeof(modifiedTimeString), "%Y-%m-%d %H:%M:%S", modifiedTime);
             lastModified = modifiedTimeString;
-            fileSize = std::to_string(size);
+            fileSize = size_tToString(size);
         }
         indexBody.append("<tr " + classAttribute + "><td><a href=\"" + path + "/" + entry->d_name + 
 		"\">" + name + "</a></td><td>" + lastModified + "</td><td>" + fileSize + "</td></tr>");
@@ -229,7 +230,7 @@ int Response::uploadFile()
 
 void Response::buildStatusLine()
 {	
-	_response = "HTTP/1.1 " + std::to_string(_code) 
+	_response = "HTTP/1.1 " + intToString(_code) 
 		+ " " + CodesTypes::codeMessages.at(_code) + "\r\n";
 }
 
@@ -239,7 +240,7 @@ void Response::buildHeaders()
 	{
 		_response += "Location: " + _location.getReturn().second + "\r\n";
 		_response += "Content-Type: text/html\r\n";
-		_response += "Content-Length: " + std::to_string(_body.length()) + "\r\n\r\n";
+		_response += "Content-Length: " + size_tToString(_body.length()) + "\r\n\r\n";
 		return;
 	}
 	else if (_isCGI)
@@ -262,7 +263,7 @@ void Response::buildHeaders()
 		}
 	}
 	_response += "Content-Type: " + MIME + "\r\n";
-	_response += "Content-Length: " + std::to_string(_body.length()) + "\r\n\r\n";
+	_response += "Content-Length: " + size_tToString(_body.length()) + "\r\n\r\n";
 }
 
 int Response::setLocation()
@@ -274,7 +275,7 @@ int Response::setLocation()
 		it != locations.end(); it++)
 	{
 		std::string locationURI = it->first;
-		if (locationURI.find("/*.") == 0)
+		if (locationURI.find("/*.") == 0 && request.getMethod() != "GET")
 		{
 			locationURI = locationURI.substr(2);
 			if (path.find(locationURI) == (path.length() - locationURI.length()))
@@ -342,7 +343,7 @@ int Response::fulfillRequest()
 		}
 		return _code;
 	}
-	else if (!_location.getCgiPass().empty())
+	else if (!_location.getCgiPass().empty() && request.getMethod() != "GET")
 		return executeCGI();
 	else if (_location.getCgiPass().empty() &&
 		(request.getMethod() == "POST" || request.getMethod() == "PUT"))
@@ -381,7 +382,7 @@ int Response::checkAndModifyCGIHeaders()
 		return 1;
 	return 0;
 	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "Content-length: " 
-		+ std::to_string(_body.length()));
+		+ size_tToString(_body.length()));
 }
 
 void Response::buildCGIResponse()
