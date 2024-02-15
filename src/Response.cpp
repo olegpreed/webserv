@@ -16,13 +16,45 @@ void Response::setConfig(ServerConfig config)
 	_config = config;
 }
 
+char** _initEnv(const Request &request) {
+	std::vector<std::string> stringEnvp;
+	stringEnvp.push_back("CONTENT_LENGTH=" + request.getBytesRead());
+	if (request.getHeaders().find("content-type") != request.getHeaders().end())
+	stringEnvp.push_back("CONTENT_TYPE=" + request.getHeaders().at("Content-type"));
+	stringEnvp.push_back("GATEWAY_INTERFACE=CGI/1.1");
+	stringEnvp.push_back("PATH_TRANSLATED=" + request.getPath());
+	stringEnvp.push_back("QUERY_STRING=" + request.getQuery());
+	stringEnvp.push_back("REQUEST_METHOD=" + request.getMethod());
+	stringEnvp.push_back("CONTENT_LENGTH=" + request.getBytesRead());
+	stringEnvp.push_back("CONTENT_LENGTH=" + request.getBytesRead());
+	
+	for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin();
+		it != request.getHeaders().end(); it++) {
+		std::string header = it->first;
+		if (it->first == "content-type" || it->first == "content-length")
+			continue;
+		std::transform(header.begin(), header.end(), header.begin(), ::toupper);
+		std::string value = it->second;
+		stringEnvp.push_back("HTTP_" + header + "=" + value);
+	}
+	char** envp = new char*[stringEnvp.size() + 1];
+	for (int i = 0; i < stringEnvp.size(); i++) {
+		envp[i] = new char[stringEnvp[i].size() + 1];
+		strcpy(envp[i], stringEnvp[i].c_str());
+	}
+	envp[stringEnvp.size()] = NULL;
+	return envp;
+}
+
 int Response::executeCGI()
 {
 	_isCGI = true;
+	_initEnv(request);
 	std::pair<int, std::string> CGIresponse;
 	CGIInterface::executeCGI(CGIresponse, _location.getCgiPass(),
 		request.getTempFilePath());
 	_body = CGIresponse.second;
+	// return 200;
 	return CGIresponse.first;
 }
 
@@ -325,8 +357,8 @@ int Response::fulfillRequest()
 
 int Response::checkAndModifyCGIHeaders()
 {
-	int pos = _CGIHeaders.find("\r\n");
-	int posStart = 0;
+	size_t pos = _CGIHeaders.find("\r\n");
+	size_t posStart = 0;
 	bool contentTypeExists = false;
 	while (pos != 0)
 	{
@@ -347,7 +379,9 @@ int Response::checkAndModifyCGIHeaders()
 	}
 	if (!_body.empty() && !contentTypeExists)
 		return 1;
-	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "Content-length: " + _body.length());
+	return 0;
+	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "Content-length: " 
+		+ std::to_string(_body.length()));
 }
 
 void Response::buildCGIResponse()

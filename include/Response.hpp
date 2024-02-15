@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <cstdio>
+#include <vector>
 #include <algorithm>
 #include "Request.hpp"
 #include "Config.hpp"
@@ -45,7 +46,7 @@ class Response
 		int executeCGI();
 		std::string getCodeMessage();
 		const std::string &getResponse();
-		int checkAndModifyCGIHeaders()
+		int checkAndModifyCGIHeaders();
 		void setConfig(ServerConfig config);
 		Request request;
 };
