@@ -12,6 +12,7 @@
 #include "Config.hpp"
 #include "ServerConfig.hpp"
 #include "Location.hpp"
+#include "Socket.hpp"
 
 void handleRequest(int clientSocket, const ServerConfig &config)
 {
@@ -69,71 +70,14 @@ void handleRequest(int clientSocket, const ServerConfig &config)
 	// std::cout << saveRequest << std::endl;
 	response.request = *request;
 	response.setConfig(config);
-	response.buildResponse();
+	if (!response.isReady())
+		response.buildResponse();
+	if (response.isReady())
+		response.sendResponse(clientSocket);
 	// std::cout << response.getResponse() << std::endl;
-	send(clientSocket, response.getResponse().c_str(), response.getResponse().length(), 0);
 	close(clientSocket);
 	delete request;
 	delete[] buff;
-}
-
-int printServerConfig(const std::vector<ServerConfig> &server_config)
-{
-	// ---------------------------------------------------------------- //
-	std::cout << "NUMBER OF SERVERS: " << server_config.size() << std::endl
-			  << std::endl;
-	// ---------------------------------------------------------------- //
-	for (size_t i = 0; i < server_config.size(); i++)
-	{
-		std::cout << "SERVER[" << i + 1 << "]:" << std::endl;
-		if (server_config.at(i).getServerBlock().empty() == false)
-		{
-			std::cerr << "Error: temporary string is not empty" << std::endl;
-			return 1;
-		}
-		if (server_config.at(i).getDefaultServer() == true)
-			std::cout << "-> DEFAULT SERVER: ON" << std::endl;
-		else
-			std::cout << "-> DEFAULT SERVER: OFF" << std::endl;
-		std::cout << "-> LISTEN: [" << server_config.at(i).getListen().first << ":"
-				  << server_config.at(i).getListen().second << "]" << std::endl;
-		std::cout << "-> SERVER NAME: ";
-		for (size_t j = 0; j < server_config.at(i).getServerName().size(); j++)
-			std::cout << "[" << server_config.at(i).getServerName().at(j) << "]";
-		std::cout << std::endl;
-		std::map<std::string, Location> location_map = server_config.at(i).getLocationMap();
-		for (std::map<std::string, Location>::iterator it = location_map.begin(); it != location_map.end(); it++)
-		{
-			std::cout << "-> LOCATION: [" << it->first << "]" << std::endl;
-			if (it->second.getAutoindex() == true)
-				std::cout << "  -> AUTOINDEX: [ON]" << std::endl;
-			else
-				std::cout << "  -> AUTOINDEX: OFF" << std::endl;
-			std::cout << "  -> ROOT: [" << it->second.getRoot() << "]" << std::endl;
-			std::cout << "  -> INDEX: ";
-			for (size_t j = 0; j < it->second.getIndex().size(); j++)
-				std::cout << "[" << it->second.getIndex().at(j) << "]";
-			std::cout << std::endl;
-			std::cout << "  -> LIMIT EXCEPT: ";
-			for (std::set<std::string>::iterator it_set = it->second.getLimitExcept().begin();
-				 it_set != it->second.getLimitExcept().end(); it_set++)
-				std::cout << "[" << *it_set << "]";
-			std::cout << std::endl;
-			std::cout << "  -> RETURN: [" << it->second.getReturn().first << "] -> ["
-					  << it->second.getReturn().second << "]" << std::endl;
-			std::cout << "  -> CGI PATH: [" << it->second.getCgiPass() << "]" << std::endl;
-			std::cout << "  -> CLIENT BODY TMEP PATH: [" << it->second.getClientBodyTempPath() << "]" << std::endl;
-			std::cout << "  -> CLIENT MAX SIZE: [" << it->second.getClientMaxBodySize() << "]" << std::endl;
-		}
-		std::map<int, std::string> error_page = server_config.at(i).getErrorPage();
-		for (std::map<int, std::string>::iterator it = error_page.begin(); it != error_page.end(); it++)
-			std::cout << "-> ERROR CODE: [" << it->first << "] ERROR PATH: [" << it->second << "]" << std::endl;
-		std::cout << std::endl;
-	}
-	// ---------------------------------------------------------------- //
-	std::cout << "->OK<-" << std::endl;
-	// ----------------------------------------------------- ----------- //
-	return 0;
 }
 
 int createServerConfig(int argc, char *argv[], std::vector<ServerConfig> &server_config)
@@ -164,6 +108,305 @@ int validateArgc(int argc)
 }
 
 // simple running webserver
+// int main(int argc, char *argv[])
+// {
+// 	// Validate arguments
+// 	if (validateArgc(argc))
+// 		return 1;
+// 	// Parsing config and assigning values
+// 	static std::vector<ServerConfig> server_config;
+// 	if (createServerConfig(argc, argv, server_config))
+// 		return 1;
+
+// 	// -----> * SERVER PART STARTS HERE * < -----
+
+// 	// Create socket
+// 	int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+// 	if (serverSocket == -1)
+// 	{
+// 		std::cerr << "Failed to create socket\n";
+// 		return EXIT_FAILURE;
+// 	}
+
+// 	// so that sockets that havent been yet deleted after closing program could be reused
+// 	int enable = 1;
+// 	setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+
+// 	// Bind to port
+// 	sockaddr_in serverAddr; //{}; <----
+// 	serverAddr.sin_family = AF_INET;
+// 	serverAddr.sin_addr.s_addr = INADDR_ANY;
+// 	serverAddr.sin_port = htons(PORT);
+// 	if (bind(serverSocket, reinterpret_cast<sockaddr *>(&serverAddr), sizeof(serverAddr)) == -1)
+// 	{
+// 		std::cerr << "Failed to bind to port " << PORT << "\n";
+// 		close(serverSocket);
+// 		return EXIT_FAILURE;
+// 	}
+
+// 	// Listen for incoming connections
+// 	if (listen(serverSocket, SOMAXCONN) == -1)
+// 	{
+// 		std::cerr << "Failed to listen for connections\n";
+// 		close(serverSocket);
+// 		return EXIT_FAILURE;
+// 	}
+
+// 	std::cout << "Server listening on port " << PORT << "\n";
+
+// 	while (true)
+// 	{
+// 		sockaddr_in clientAddr; //{}; <----
+// 		socklen_t clientAddrLen = sizeof(clientAddr);
+
+// 		// Accept connection
+// 		int clientSocket = accept(serverSocket, reinterpret_cast<sockaddr *>(&clientAddr), &clientAddrLen);
+// 		if (clientSocket == -1)
+// 		{
+// 			std::cerr << "Failed to accept connection\n";
+// 			continue;
+// 		}
+
+// 		// Handle request
+// 		handleRequest(clientSocket, server_config.at(1));
+// 	}
+
+// 	return 0;
+// }
+
+// int main(int argc, char *argv[])
+// {
+// 	// Validate arguments
+// 	if (validateArgc(argc))
+// 		return 1;
+// 	// Parsing config and assigning values
+// 	static std::vector<ServerConfig> server_config;
+// 	if (createServerConfig(argc, argv, server_config))
+// 		return 1;
+
+// 	// -----> * SERVER PART STARTS HERE * < -----
+
+// 	fd_set masterRead;
+// 	fd_set masterWrite;
+// 	FD_ZERO(&masterRead);
+// 	FD_ZERO(&masterWrite);
+// 	int num = 1;
+
+// 	// Create sockets
+// 	for (std::vector<ServerConfig>::iterator it = server_config.begin(); 
+// 		it != server_config.end(); ++it)
+// 	{
+// 		int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+// 		if (serverSocket == -1)
+// 		{
+// 			std::cerr << "Failed to create socket\n";
+// 			return EXIT_FAILURE;
+// 		}
+// 		// so that sockets that havent been yet deleted after closing program could be reused
+// 		int enable = 1;
+// 		setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+
+// 		// Bind to port
+// 		sockaddr_in serverAddr; //{}; <----
+// 		serverAddr.sin_family = AF_INET;
+// 		serverAddr.sin_addr.s_addr = it->getListen().first;
+// 		serverAddr.sin_port = it->getListen().second;
+
+// 		if (bind(serverSocket, reinterpret_cast<sockaddr *>(&serverAddr), sizeof(serverAddr)) == -1)
+// 		{
+// 			std::cerr << "Failed to bind to port " << PORT << "\n";
+// 			close(serverSocket);
+// 			return EXIT_FAILURE;
+// 		}
+
+// 		// make socket listen for the incoming connections (max connections, some recommend 32)
+// 		if (listen(serverSocket, SOMAXCONN) == -1)
+// 		{
+// 			std::cerr << "Failed to listen for connections\n";
+// 			close(serverSocket);
+// 			return EXIT_FAILURE;
+// 		}
+
+// 		std::cout << "Server listening on ip " << it->getListen().first << " and port " << it->getListen().second << std::endl;
+
+// 		//create vector of sockets for later use
+// 		socketsArray.push_back(serverSocket);
+
+// 		// add socket to masterRead set
+// 		FD_SET(serverSocket, &masterRead);
+// 		std::cout << "Server listening on port " << PORT << "\n";
+
+// 		if (serverSocket >= num)
+// 			num = serverSocket + 1;
+// 	}
+
+// 	fd_set fdread;
+// 	fd_set fdwrite;
+// 	FD_ZERO(&fdread);
+// 	FD_ZERO(&fdwrite);
+// 	while (true)
+// 	{
+// 		fdread = masterRead;
+// 		fdwrite = masterWrite;
+// 		// num should be > 0 for select to work
+// 		if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
+// 		{
+// 			perror("select error");
+// 			exit(1);
+// 		}
+// 		// iterate through sockets vector to find which one ready to recieve data after select
+// 		for (int i = 0; i < socketsArray; i++)
+// 		{
+// 			if (FD_ISSET(i, &fdread))
+// 			{
+// 				//this is a new connection
+// 				int clientSocket = accept(i, reinterpret_cast<sockaddr *>(&clientAddr), &clientAddrLen);
+// 				fcntl(clientSocket, F_SETFL, O_NONBLOCK);
+// 				FD_SET(clientSocket, &masterRead);
+// 				if (clientSocket >= num)
+// 					num = clientSocket + 1;
+// 				//save fd to separate vector (different from sockets) for later use 
+// 				fdArray.push_back(clientSocket);
+// 			}
+// 		}
+// 		for (int i = 0; i < fdArray; i++)
+// 		{
+// 			if (FD_ISSET(i, &fdread))
+// 			{
+// 				recv();
+// 				if (requestReading == complete)
+// 					buildResponse();
+// 					//do something with cgi proccessing (not to wait for it)
+// 				if (response == ready)
+// 				{
+// 					FD_SET(i, &masterWrite);
+// 					FD_CLR(i, &masterRead);
+// 				}
+// 			}
+// 		}
+// 		for (int i = 0; i < fdArray; i++)
+// 		{
+// 			if (FD_ISSET(i, &fdwrite))
+// 			{
+// 				send();
+// 			}
+// 			if (sendRequest == complete)
+// 				FD_CLR(i, &masterWrite);
+// 		}
+// 	}
+
+// 	return 0;
+// }
+
+int castIpAndPort(sockaddr_in &serverAddr, const std::pair<std::string, ssize_t> &pair)
+{
+	const char *ip_str = pair.first.c_str();
+	in_addr_t ip_addr = inet_addr(ip_str);
+	if (ip_addr == INADDR_NONE) {
+		printf("Invalid IP address\n");
+		return 1;
+	} else {
+		// printf("IP address in in_addr_t format: %u\n", ip_addr);
+	}
+	serverAddr.sin_addr.s_addr = ip_addr;
+
+	ssize_t portSizeT = pair.second;
+	if (portSizeT < 0 || portSizeT > UINT16_MAX) {
+		printf("Invalid port number\n");
+		return 1;
+	}
+	else {
+		// printf("Port number in ssize_t format: %ld\n", (in_port_t)portSizeT);
+	}
+	serverAddr.sin_port = (in_port_t)portSizeT;
+	return 0;
+}
+
+int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector<Socket> &sockets, 
+								int &num, fd_set &masterRead)
+{
+	for (std::vector<ServerConfig>::iterator it = server_config.begin(); 
+		it != server_config.end(); ++it)
+	{
+		sockaddr_in serverAddr;
+		serverAddr.sin_family = AF_INET;
+		if (castIpAndPort(serverAddr, it->getListen()))
+			return 1;
+		// check that socket already exists
+		bool socketExists = false;
+		for (std::vector<Socket>::iterator it2 = sockets.begin();
+			it2 != sockets.end(); ++it2)
+		{
+			if (it2->getAddr().sin_addr.s_addr == serverAddr.sin_addr.s_addr 
+				&& it2->getAddr().sin_port == serverAddr.sin_port)
+			{
+				it2->serverBlocks.push_back(*it);
+				socketExists = true;
+				break;
+			}
+		}
+		if (socketExists)
+			continue;
+		
+		int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+		if (serverSocket == -1)
+		{
+			std::cerr << "Failed to create socket\n";
+			return 1;
+		}
+
+		// so that sockets that havent been yet deleted after closing program could be reused
+		int enable = 1;
+		setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+
+		if (bind(serverSocket, reinterpret_cast<sockaddr *>(&serverAddr), sizeof(serverAddr)) == -1)
+		{
+			std::cerr << "Failed to bind to port " << PORT << "\n";
+			close(serverSocket);
+			return 1;
+		}
+
+		// make socket listen for the incoming connections (max connections, some recommend 32)
+		if (listen(serverSocket, SOMAXCONN) == -1)
+		{
+			std::cerr << "Failed to listen for connections\n";
+			close(serverSocket);
+			return 1;
+		}		
+
+		Socket socket;
+		socket.setAddr(serverAddr);
+		socket.setFd(serverSocket);
+		socket.serverBlocks.push_back(*it);
+		sockets.push_back(socket);
+		// add socket to masterRead set
+		FD_SET(serverSocket, &masterRead);
+		if (serverSocket >= num)
+			num = serverSocket + 1;
+	}
+	return 0;
+}
+
+void printListeningSockets(std::vector<Socket>  &sockets)
+{
+	for (std::vector<Socket>::iterator it = sockets.begin();
+		it != sockets.end(); ++it)
+	{
+		std::cout << "Server listening on ip " << inet_ntoa(it->getAddr().sin_addr) << " and port " << it->getAddr().sin_port << std::endl;
+		for (std::vector<ServerConfig>::iterator it2 = it->serverBlocks.begin();
+			it2 != it->serverBlocks.end(); ++it2)
+		{
+			if (it2->getServerName().empty())
+				std::cout << "server_name: " << std::endl;
+			for (std::vector<std::string>::const_iterator it3 = it2->getServerName().begin();
+				it3 != it2->getServerName().end(); ++it3)
+			{
+				std::cout << "server_name: " << *it3 << std::endl;
+			}
+		}
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	// Validate arguments
@@ -173,61 +416,73 @@ int main(int argc, char *argv[])
 	static std::vector<ServerConfig> server_config;
 	if (createServerConfig(argc, argv, server_config))
 		return 1;
-	// Printing config values
-	// if (printServerConfig(server_config))
-	// 	return 1;
 
 	// -----> * SERVER PART STARTS HERE * < -----
 
-	// Create socket
-	int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-	if (serverSocket == -1)
-	{
-		std::cerr << "Failed to create socket\n";
-		return EXIT_FAILURE;
-	}
-
-	int enable = 1;
-	setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
-
-	// Bind to port
-	sockaddr_in serverAddr; //{}; <----
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = INADDR_ANY;
-	serverAddr.sin_port = htons(PORT);
-	if (bind(serverSocket, reinterpret_cast<sockaddr *>(&serverAddr), sizeof(serverAddr)) == -1)
-	{
-		std::cerr << "Failed to bind to port " << PORT << "\n";
-		close(serverSocket);
-		return EXIT_FAILURE;
-	}
-
-	// Listen for incoming connections
-	if (listen(serverSocket, SOMAXCONN) == -1)
-	{
-		std::cerr << "Failed to listen for connections\n";
-		close(serverSocket);
-		return EXIT_FAILURE;
-	}
-
-	std::cout << "Server listening on port " << PORT << "\n";
-
-	while (true)
-	{
-		sockaddr_in clientAddr; //{}; <----
-		socklen_t clientAddrLen = sizeof(clientAddr);
-
-		// Accept connection
-		int clientSocket = accept(serverSocket, reinterpret_cast<sockaddr *>(&clientAddr), &clientAddrLen);
-		if (clientSocket == -1)
-		{
-			std::cerr << "Failed to accept connection\n";
-			continue;
-		}
-
-		// Handle request
-		handleRequest(clientSocket, server_config.at(1));
-	}
+	int num = 1;
+	std::vector<Socket> sockets;
+	fd_set masterRead;
+	fd_set masterWrite;
+	FD_ZERO(&masterRead);
+	FD_ZERO(&masterWrite);
+	if (createListeningSockets(server_config, sockets, num, masterRead))
+		return 1;
+	printListeningSockets(sockets);
+	return 0;
+	// fd_set fdread;
+	// fd_set fdwrite;
+	// FD_ZERO(&fdread);
+	// FD_ZERO(&fdwrite);
+	// while (true)
+	// {
+	// 	fdread = masterRead;
+	// 	fdwrite = masterWrite;
+	// 	// num should be > 0 for select to work
+	// 	if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
+	// 	{
+	// 		perror("select error");
+	// 		exit(1);
+	// 	}
+	// 	// iterate through sockets vector to find which one ready to recieve data after select
+	// 	for (int i = 0; i < socketsArray; i++)
+	// 	{
+	// 		if (FD_ISSET(i, &fdread))
+	// 		{
+	// 			//this is a new connection
+	// 			int clientSocket = accept(i, reinterpret_cast<sockaddr *>(&clientAddr), &clientAddrLen);
+	// 			fcntl(clientSocket, F_SETFL, O_NONBLOCK);
+	// 			FD_SET(clientSocket, &masterRead);
+	// 			if (clientSocket >= num)
+	// 				num = clientSocket + 1;
+	// 			//save fd to separate vector (different from sockets) for later use 
+	// 			fdArray.push_back(clientSocket);
+	// 		}
+	// 	}
+	// 	for (int i = 0; i < fdArray; i++)
+	// 	{
+	// 		if (FD_ISSET(i, &fdread))
+	// 		{
+	// 			recv();
+	// 			if (requestReading == complete)
+	// 				buildResponse();
+	// 				//do something with cgi proccessing (not to wait for it)
+	// 			if (response == ready)
+	// 			{
+	// 				FD_SET(i, &masterWrite);
+	// 				FD_CLR(i, &masterRead);
+	// 			}
+	// 		}
+	// 	}
+	// 	for (int i = 0; i < fdArray; i++)
+	// 	{
+	// 		if (FD_ISSET(i, &fdwrite))
+	// 		{
+	// 			send();
+	// 		}
+	// 		if (sendRequest == complete)
+	// 			FD_CLR(i, &masterWrite);
+	// 	}
+	// }
 
 	return 0;
 }

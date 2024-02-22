@@ -16,6 +16,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "Location.hpp"
 #include "ServerConfig.hpp"
@@ -28,6 +30,8 @@ class Config {
 		static std::string	_config_content;
 		static std::string	_buffer;
 
+		static unsigned int _fileCounter;
+
 		Config();
 		~Config();
 
@@ -36,7 +40,7 @@ class Config {
 		static void	_extractServerBlocks(std::vector<ServerConfig>& config_type);
 		static void	_addServerBlock(std::vector<ServerConfig>& server_config,
 			size_t& start, size_t& finish);
-		static void	_checkDefaultServer(const ServerConfig& server_config);
+		static void	_checkRootLocation(const ServerConfig& server_config);
 
 	public:
 		static void createServerConfig(const std::string& config_name,
@@ -68,7 +72,7 @@ class Config {
 			ReadConfigFileError(const std::string& message) : std::runtime_error(message) {}
 		};
 
-		static int fileCounter;
+		static int createTempFile(std::string& path, int& fd);
 };
 
 #endif

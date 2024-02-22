@@ -4,6 +4,7 @@ Request::Request()
 {
 	_status = REQUEST_LINE;
 	_chunkStatus = CHUNK_SIZE;
+	_tempFilePath = "input_";
 	_bytesRead = 0;
 	_tempFileFd = -1;
 }
@@ -166,20 +167,6 @@ void Request::removeCurrentDirDots()
 		_path.erase(pos, 2);
 }
 
-int Request::createTempFile()
-{
-	std::stringstream ss;
-	ss << "temp_" << "input_" << Config::fileCounter;
-	Config::fileCounter++;
-	_tempFilePath = ss.str();
-	_tempFileFd = open(_tempFilePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 
-		S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-	if (_tempFileFd == -1)
-		return 500;
-
-	return 0;
-}
-
 int Request::writeToFile()
 {
 	ssize_t bytesWritten = write(_tempFileFd, _bodyBuffer.c_str(), _bodyBuffer.size());
@@ -231,6 +218,13 @@ int Request::parseRequestLine()
 	return 0;
 }
 
+void removePort(std::string &host)
+{
+	size_t pos = host.find(":");
+	if (pos != std::string::npos)
+		host.erase(pos);
+}
+
 int Request::parseHeaders()
 {
 	size_t pos = _buffer.find("\r\n");
@@ -242,6 +236,8 @@ int Request::parseHeaders()
 			_buffer.erase(0, 2);
 			if (_headers.find("host") == _headers.end())
 				return 400;
+			else 
+				removePort(_headers["host"]);
 			if (_method == "POST" || _method == "PUT")
 			{
 				_status = PREBODY;
@@ -275,7 +271,7 @@ int Request::beforeParseBody()
 		&& _headers["transfer-encoding"] == "chunked")
 	{
 		_status = CHUNKS;
-		return createTempFile();
+		return Config::createTempFile(_tempFilePath, _tempFileFd);
 	}
 	if (_headers.find("content-length") == _headers.end())
 		return 411;
@@ -299,7 +295,7 @@ int Request::beforeParseBody()
 		_status = DONE;
 		return 0;
 	}
-	createTempFile();
+	Config::createTempFile(_tempFilePath, _tempFileFd);
 	_status = BODY;
 	return 0;
 }

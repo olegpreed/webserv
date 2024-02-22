@@ -1,14 +1,9 @@
 #include "Response.hpp"
 
-Response::Response() : _isCGI(false) {}
+Response::Response() : _isBodyFile(false), _isCGI(false), _isReady(false) {}
 
 Response::~Response() {
 	deleteTempFile();
-}
-
-const std::string &Response::getResponse()
-{
-	return _response;
 }
 
 void Response::setConfig(ServerConfig config)
@@ -16,29 +11,35 @@ void Response::setConfig(ServerConfig config)
 	_config = config;
 }
 
+bool Response::isReady()
+{
+	return _isReady;
+}
+
 char** Response::initEnv() {
 	std::vector<std::string> stringEnvp;
-	std::stringstream ss;
-	ss << request.getBytesRead();
-	stringEnvp.push_back("CONTENT_LENGTH=" + ss.str());
-	ss.clear();
-	if (request.getHeaders().find("content-type") != request.getHeaders().end())
-		stringEnvp.push_back("CONTENT_TYPE=" + request.getHeaders().at("content-type"));
-	stringEnvp.push_back("GATEWAY_INTERFACE=CGI/1.1");
-	stringEnvp.push_back("PATH_TRANSLATED=" + request.getPath());
-	stringEnvp.push_back("QUERY_STRING=" + request.getQuery());
+	// std::stringstream ss;
+	// ss << request.getBytesRead();
+	// stringEnvp.push_back("CONTENT_LENGTH=" + ss.str());
+	// ss.clear();
+	// if (request.getHeaders().find("content-type") != request.getHeaders().end())
+	// 	stringEnvp.push_back("CONTENT_TYPE=" + request.getHeaders().at("content-type"));
+	// stringEnvp.push_back("GATEWAY_INTERFACE=CGI/1.1");
+	// stringEnvp.push_back("PATH_TRANSLATED=" + request.getPath());
 	stringEnvp.push_back("REQUEST_METHOD=" + request.getMethod());
 	stringEnvp.push_back("SERVER_PROTOCOL=HTTP/1.1");
+	stringEnvp.push_back("PATH_INFO=" + request.getPath());
+	// stringEnvp.push_back("QUERY_STRING=" + request.getQuery());
 	
-	for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin();
-		it != request.getHeaders().end(); it++) {
-		std::string header = it->first;
-		if (it->first == "content-type" || it->first == "content-length")
-			continue;
-		std::transform(header.begin(), header.end(), header.begin(), ::toupper);
-		std::string value = it->second;
-		stringEnvp.push_back("HTTP_" + header + "=" + value);
-	}
+	// for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin();
+	// 	it != request.getHeaders().end(); it++) {
+	// 	std::string header = it->first;
+	// 	if (it->first == "content-type" || it->first == "content-length")
+	// 		continue;
+	// 	std::transform(header.begin(), header.end(), header.begin(), ::toupper);
+	// 	std::string value = it->second;
+	// 	stringEnvp.push_back("HTTP_" + header + "=" + value);
+	// }
 	char** envp = new char*[stringEnvp.size() + 1];
 	for (size_t i = 0; i < stringEnvp.size(); i++) {
 		envp[i] = new char[stringEnvp[i].size() + 1];
@@ -51,12 +52,18 @@ char** Response::initEnv() {
 int Response::executeCGI()
 {
 	_isCGI = true;
-	std::pair<int, std::string> CGIresponse;
-	CGIInterface::executeCGI(CGIresponse, initEnv(), _location.getCgiPass(),
-		request.getTempFilePath());
-	// _tempCGIFilePath = CGIresponse.second;
-	_tempCGIFilePath = "CGI_response";
-	return CGIresponse.first;
+	char **env = initEnv();
+	_code = CGIInterface::executeCGI(_CGIHeaders, _bodyPath, env, 
+		_location.getCgiPass(), request.getTempFilePath());
+	// _CGIHeaders = "\r\n\r\n";
+	// _bodyPath = "CGI_response.txt";
+	std::cout << "******************" << std::endl;
+	std::cout << _CGIHeaders << std::endl;
+	std::cout << "******************" << std::endl;
+	delete[] env;
+	_isBodyFile = true;
+	return _code;
+	// return 200;
 }
 
 std::string Response::getCodeMessage()
@@ -73,7 +80,7 @@ std::string Response::getCodeMessage()
 
 void Response::buildHTML(const std::string &pageTitle, const std::string &pageBody)
 {
-	_body.append("<html><head><link rel=\"stylesheet\" href=\"/styles.css\"><title>");
+	_body.append("<html><head><link rel='stylesheet' href='/styles.css'><title>");
 	_body.append(pageTitle);
 	_body.append("</title></head><body>");
 	_body.append(pageBody);
@@ -83,12 +90,12 @@ void Response::buildHTML(const std::string &pageTitle, const std::string &pageBo
 void Response::buildErrorHTMLBody()
 {
 	std::string errorBody;
-	errorBody.append("<div class=\"header\"><div class=\"project-name\">WEBSERV</div>");
-	errorBody.append("<div class=\"logo\"><a href=\"/\"><img alt=\"Home School 42\" ");
-	errorBody.append("src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">");
-	errorBody.append("</a></div></div><div class=\"content\"><div class=\"error-code\">");
+	errorBody.append("<div class='header'><div class='project-name'>WEBSERV</div>");
+	errorBody.append("<div class='logo'><a href='/'><img alt='Home School 42' ");
+	errorBody.append("src='https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg'>");
+	errorBody.append("</a></div></div><div class='content'><div class='error-code'>");
 	errorBody.append(intToString(_code));
-	errorBody.append("</div><div class=\"error-message\">" + CodesTypes::codeMessages.at(_code)+ "</div></div>");
+	errorBody.append("</div><div class='error-message'>" + CodesTypes::codeMessages.at(_code)+ "</div></div>");
 	buildHTML(intToString(_code), errorBody);
 }
 
@@ -100,6 +107,7 @@ void Response::buildErrorBody()
 	}
 	catch (std::out_of_range &e) {
 		buildErrorHTMLBody();
+		_bodySize = _body.size();
 		return;
 	}
 	std::ifstream file(filename);
@@ -108,6 +116,7 @@ void Response::buildErrorBody()
 	else
 		_body.assign((std::istreambuf_iterator<char>(file)),
 			std::istreambuf_iterator<char>());
+	_bodySize = _body.size();
 }
 
 bool fileExists(const char* filename) {
@@ -123,15 +132,37 @@ bool hasReadPermissions(const char* filename) {
     return false;
 }
 
-int Response::buildFileBody(std::ifstream &file)
+int Response::getFileSize(const std::string &file)
+{
+	struct stat file_stat;
+	if (stat(file.c_str(), &file_stat) != 0)
+		return 1;
+	_bodySize = file_stat.st_size;
+	return 0;
+}
+
+int Response::buildFileBody()
 {
 	if (!fileExists(_fileOrFolder.c_str()))
         return 404;
     else if (!hasReadPermissions(_fileOrFolder.c_str()))
         return 403;
-	else 
-		_body.assign((std::istreambuf_iterator<char>(file)),
-			std::istreambuf_iterator<char>());
+	else
+	{
+		if (getFileSize(_fileOrFolder))
+			return 500;
+		if (_bodySize > MAX_FILE_SIZE_FOR_STRING)
+		{
+			_bodyPath = _fileOrFolder;
+			_isBodyFile = true;
+		}
+		else 
+		{
+			std::ifstream file(_fileOrFolder);
+			_body.assign((std::istreambuf_iterator<char>(file)),
+				std::istreambuf_iterator<char>());
+		}
+	}
 	return 200;
 }
 
@@ -159,11 +190,11 @@ int Response::deleteFile()
 
 int Response::buildAutoindexBody() {
     std::string indexBody;
-    indexBody.append("<div class=\"header\"><div class=\"project-name\">Index of ");
+    indexBody.append("<div class='header'><div class='project-name'>Index of ");
 	indexBody.append(request.getPath());
-    indexBody.append("</div><div class=\"logo\"><a href=\"/\">");
-	indexBody.append("<img alt=\"Home School 42\"");
-	indexBody.append("src=\"https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg\">");
+    indexBody.append("</div><div class='logo'><a href='/'>");
+	indexBody.append("<img alt='Home School 42'");
+	indexBody.append("src='https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg'>");
 	indexBody.append("</a></div></div>");
     DIR* dir = opendir(_fileOrFolder.c_str());
     if (!dir) {
@@ -173,7 +204,7 @@ int Response::buildAutoindexBody() {
     struct dirent* entry;
     std::string path = request.getPath();
     path = path == "/" ? "" : path;
-    indexBody.append("<div class=\"content\"><table class=\"table\"><thead><tr>");
+    indexBody.append("<div class='content'><table class='table'><thead><tr>");
 	indexBody.append("<th>Name</th><th>Last Modified</th><th>File Size (bytes)</th></tr></thead><tbody>");
     while ((entry = readdir(dir)) != nullptr) {
 		if ((entry->d_name[0] == '.' && strcmp(entry->d_name, "..") != 0) 
@@ -185,7 +216,7 @@ int Response::buildAutoindexBody() {
             std::cerr << "Error getting file stat" << std::endl;
             continue;
         }
-        std::string classAttribute = S_ISDIR(fileStat.st_mode) ? "class=\"folder\"" : "class=\"file\"";
+        std::string classAttribute = S_ISDIR(fileStat.st_mode) ? "class='folder'" : "class='file'";
         std::string name = entry->d_name;
         std::string lastModified = "-";
         std::string fileSize = "-";
@@ -197,12 +228,13 @@ int Response::buildAutoindexBody() {
             lastModified = modifiedTimeString;
             fileSize = size_tToString(size);
         }
-        indexBody.append("<tr " + classAttribute + "><td><a href=\"" + path + "/" + entry->d_name + 
-		"\">" + name + "</a></td><td>" + lastModified + "</td><td>" + fileSize + "</td></tr>");
+        indexBody.append("<tr " + classAttribute + "><td><a href='" + path + "/" + entry->d_name + 
+		"'>" + name + "</a></td><td>" + lastModified + "</td><td>" + fileSize + "</td></tr>");
     }
     indexBody.append("</tbody></table></div>");
     closedir(dir);
     buildHTML("Index of " + request.getPath(), indexBody);
+	_bodySize = _body.length();
     return 0;
 }
 
@@ -230,7 +262,7 @@ int Response::uploadFile()
 
 void Response::buildStatusLine()
 {	
-	_response = "HTTP/1.1 " + intToString(_code) 
+	_headers = "HTTP/1.1 " + intToString(_code) 
 		+ " " + CodesTypes::codeMessages.at(_code) + "\r\n";
 }
 
@@ -238,14 +270,23 @@ void Response::buildHeaders()
 {
 	if (_code == 301 || _code == 302)
 	{
-		_response += "Location: " + _location.getReturn().second + "\r\n";
-		_response += "Content-Type: text/html\r\n";
-		_response += "Content-Length: " + size_tToString(_body.length()) + "\r\n\r\n";
+		_headers += "Location: " + _location.getReturn().second + "\r\n";
+		_headers += "Content-Type: text/html\r\n";
+		_headers += "Content-Length: " + size_tToString(_bodySize) + "\r\n\r\n";
+		return;
+	}
+	else if (_code >= 400 && _code <= 599)
+	{
+		_headers += "Content-Type: text/html\r\n";
+		_headers += "Content-Length: " + size_tToString(_bodySize) + "\r\n\r\n";
 		return;
 	}
 	else if (_isCGI)
 	{
-		_response += _CGIHeaders;
+		_headers += _CGIHeaders;
+		// std::cout << "+++++++++++++++++++" << std::endl;
+		// std::cout << _headers << std::endl;
+		// std::cout << "+++++++++++++++++++" << std::endl;
 		return;
 	}
 	std::string MIME;
@@ -262,8 +303,8 @@ void Response::buildHeaders()
 			MIME = "Unknown";
 		}
 	}
-	_response += "Content-Type: " + MIME + "\r\n";
-	_response += "Content-Length: " + size_tToString(_body.length()) + "\r\n\r\n";
+	_headers += "Content-Type: " + MIME + "\r\n";
+	_headers += "Content-Length: " + size_tToString(_bodySize) + "\r\n\r\n";
 }
 
 int Response::setLocation()
@@ -276,6 +317,7 @@ int Response::setLocation()
 	{
 		std::string locationURI = it->first;
 		if (locationURI.find("/*.") == 0 && request.getMethod() != "GET")
+		// if (locationURI.find("/*.") == 0)
 		{
 			locationURI = locationURI.substr(2);
 			if (path.find(locationURI) == (path.length() - locationURI.length()))
@@ -337,66 +379,97 @@ int Response::fulfillRequest()
 		for (std::vector<std::string>::iterator it = index.begin(); it != index.end(); it++)
 		{
 			_fileOrFolder = folderPath + "/" + *it;
-			std::ifstream file(_fileOrFolder);
-			if ((_code = buildFileBody(file)) == 200)
+			if ((_code = buildFileBody()) == 200)
 				return _code;
 		}
 		return _code;
 	}
 	else if (!_location.getCgiPass().empty() && request.getMethod() != "GET")
+	// else if (!_location.getCgiPass().empty())
 		return executeCGI();
 	else if (_location.getCgiPass().empty() &&
 		(request.getMethod() == "POST" || request.getMethod() == "PUT"))
 		return uploadFile();
 	else 
-	{
-		std::ifstream file(_fileOrFolder);
-		return buildFileBody(file);
-	}
+		return buildFileBody();
 	return 200;
 }
 
+// int Response::checkAndModifyCGIHeaders()
+// {
+// 	size_t pos = _CGIHeaders.find("\r\n\r\n");
+// 	if (pos == std::string::npos || pos == 0)
+// 		return 1;
+// 	size_t posStart = 0;
+// 	bool contentTypeExists = false;
+// 	pos = _CGIHeaders.find("\r\n");
+// 	while (pos != posStart)
+// 	{
+// 		std::string key, value;
+// 		size_t posSC = _CGIHeaders.find(":", posStart);
+// 		if (posSC == std::string::npos)
+// 			return 1;
+// 		key = _CGIHeaders.substr(posStart, posSC);
+// 		value = _CGIHeaders.substr(posSC + 1, pos);
+// 		if (hasWhiteSpaces(key))
+// 			return 1;
+// 		toLowerCase(key);
+// 		if (key == "content-type")
+// 			contentTypeExists = true;
+// 		posStart = pos + 2;
+// 		pos = _CGIHeaders.find("\r\n", posStart);
+// 	}
+// 	if (!_body.empty() && !contentTypeExists)
+// 		return 1;
+// 	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "Content-length: " 
+// 	+ size_tToString(_bodySize));
+// 	return 0;
+// }
+
 int Response::checkAndModifyCGIHeaders()
 {
-	size_t pos = _CGIHeaders.find("\r\n");
+	size_t pos = _CGIHeaders.find("\r\n\r\n");
+	if (pos == std::string::npos || pos == 0)
+		return 1;
 	size_t posStart = 0;
 	bool contentTypeExists = false;
-	while (pos != 0)
+	pos = _CGIHeaders.find("\r\n");
+	std::string header = _CGIHeaders.substr(posStart, pos);
+	while (!header.empty() && header != "\r\n")
 	{
 		std::string key, value;
-		pos = _CGIHeaders.find(":");
-		if (pos == std::string::npos)
+		size_t posSC = header.find(":");
+		if (posSC == std::string::npos)
 			return 1;
-		key = _CGIHeaders.substr(posStart, pos);
-		value = _CGIHeaders.substr(pos + 1);
+		key = header.substr(0, posSC);
+		value = header.substr(posSC + 1);
 		if (hasWhiteSpaces(key))
 			return 1;
 		toLowerCase(key);
 		if (key == "content-type")
 			contentTypeExists = true;
-		return 1;
 		posStart = pos + 2;
 		pos = _CGIHeaders.find("\r\n", posStart);
+		header = _CGIHeaders.substr(posStart, pos);
 	}
 	if (!_body.empty() && !contentTypeExists)
 		return 1;
+	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "\r\nContent-length: " 
+	+ size_tToString(_bodySize));
 	return 0;
-	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "Content-length: " 
-		+ size_tToString(_body.length()));
 }
 
 void Response::buildCGIResponse()
 {
-	size_t pos = _body.find("\r\n\r\n");
-	if (pos == std::string::npos || pos == 0)
+	if (getFileSize(_bodyPath))
 	{
 		_code = 500;
 		return;
 	}
-	_CGIHeaders = _body.substr(0, pos + 4);
-	_body = _body.substr(pos + 4);
 	if (checkAndModifyCGIHeaders())
+	{
 		_code = 500;
+	}
 }
 
 void Response::buildResponse()
@@ -413,9 +486,44 @@ void Response::buildResponse()
 			buildErrorBody();
 	}
 	if (_isCGI)
+	{
 		buildCGIResponse();
+		if (_code > 399 && _code < 600)
+		{
+			_CGIHeaders.clear();
+			_isBodyFile = false;
+			buildErrorBody();
+		}
+	}
 	buildStatusLine();
 	buildHeaders();
-	_response += _body;
+	_isReady = true;
 	return;
+}
+
+void Response::sendResponse(int fd)
+{
+	// char *buff = new char[BUFFSIZE];
+	// memset(buff, 0, BUFFSIZE);
+	if (!_isBodyFile)
+	{
+		_headers.append(_body);
+		send(fd, _headers.c_str(), _headers.length(), 0);
+	}
+	else 
+	{
+		send(fd, _headers.c_str(), _headers.length(), 0);
+		size_t size_read = 0;
+		int read_fd = open(_bodyPath.c_str(), O_RDONLY);
+		char *buff = new char[BUFFSIZE + 1];
+		memset(buff, 0, BUFFSIZE + 1);
+		while ((size_read = read(read_fd, buff, BUFFSIZE)))
+		{
+			send(fd, buff, size_read, 0);
+			memset(buff, 0, BUFFSIZE);
+		}
+		delete[] buff;
+		std::remove(_bodyPath.c_str());
+		std::cout << "REMOVE [" << request.getPath() << "]" << std::endl;
+	}
 }
