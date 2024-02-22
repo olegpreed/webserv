@@ -298,25 +298,40 @@ int validateArgc(int argc)
 // 	return 0;
 // }
 
+void printListeningSockets(std::vector<Socket>  &sockets)
+{
+	for (std::vector<Socket>::iterator it = sockets.begin();
+		it != sockets.end(); ++it)
+	{
+		std::cout << "Server listening on ip " << inet_ntoa(it->getAddr().sin_addr) << " and port " << it->getAddr().sin_port << std::endl;
+		for (std::vector<ServerConfig>::iterator it2 = it->serverBlocks.begin();
+			it2 != it->serverBlocks.end(); ++it2)
+		{
+			if (it2->getServerName().empty())
+				std::cout << "server_name: " << std::endl;
+			for (std::vector<std::string>::const_iterator it3 = it2->getServerName().begin();
+				it3 != it2->getServerName().end(); ++it3)
+			{
+				std::cout << "server_name: " << *it3 << std::endl;
+			}
+		}
+	}
+}
+
 int castIpAndPort(sockaddr_in &serverAddr, const std::pair<std::string, ssize_t> &pair)
 {
 	const char *ip_str = pair.first.c_str();
 	in_addr_t ip_addr = inet_addr(ip_str);
 	if (ip_addr == INADDR_NONE) {
-		printf("Invalid IP address\n");
+		std::cerr << "Invalid IP address" << std::endl;
 		return 1;
-	} else {
-		// printf("IP address in in_addr_t format: %u\n", ip_addr);
 	}
 	serverAddr.sin_addr.s_addr = ip_addr;
 
 	ssize_t portSizeT = pair.second;
 	if (portSizeT < 0 || portSizeT > UINT16_MAX) {
-		printf("Invalid port number\n");
+		std::cerr << "Invalid port number" << std::endl;
 		return 1;
-	}
-	else {
-		// printf("Port number in ssize_t format: %ld\n", (in_port_t)portSizeT);
 	}
 	serverAddr.sin_port = (in_port_t)portSizeT;
 	return 0;
@@ -332,7 +347,6 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 		serverAddr.sin_family = AF_INET;
 		if (castIpAndPort(serverAddr, it->getListen()))
 			return 1;
-		// check that socket already exists
 		bool socketExists = false;
 		for (std::vector<Socket>::iterator it2 = sockets.begin();
 			it2 != sockets.end(); ++it2)
@@ -347,15 +361,13 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 		}
 		if (socketExists)
 			continue;
-		
 		int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
 		if (serverSocket == -1)
 		{
-			std::cerr << "Failed to create socket\n";
+			std::cerr << "Failed to create socket" << std::endl;
 			return 1;
 		}
 
-		// so that sockets that havent been yet deleted after closing program could be reused
 		int enable = 1;
 		setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
 
@@ -379,7 +391,6 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 		socket.setFd(serverSocket);
 		socket.serverBlocks.push_back(*it);
 		sockets.push_back(socket);
-		// add socket to masterRead set
 		FD_SET(serverSocket, &masterRead);
 		if (serverSocket >= num)
 			num = serverSocket + 1;
@@ -387,22 +398,60 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 	return 0;
 }
 
-void printListeningSockets(std::vector<Socket>  &sockets)
+int runServer(std::vector<Socket> &sockets)
 {
-	for (std::vector<Socket>::iterator it = sockets.begin();
-		it != sockets.end(); ++it)
+	fd_set fdread;
+	fd_set fdwrite;
+	FD_ZERO(&fdread);
+	FD_ZERO(&fdwrite);
+	while (true)
 	{
-		std::cout << "Server listening on ip " << inet_ntoa(it->getAddr().sin_addr) << " and port " << it->getAddr().sin_port << std::endl;
-		for (std::vector<ServerConfig>::iterator it2 = it->serverBlocks.begin();
-			it2 != it->serverBlocks.end(); ++it2)
+		fdread = masterRead;
+		fdwrite = masterWrite;
+		// num should be > 0 for select to work
+		if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
 		{
-			if (it2->getServerName().empty())
-				std::cout << "server_name: " << std::endl;
-			for (std::vector<std::string>::const_iterator it3 = it2->getServerName().begin();
-				it3 != it2->getServerName().end(); ++it3)
+			perror("select error");
+			exit(1);
+		}
+		// iterate through sockets vector to find which one ready to recieve data after select
+		for (int i = 0; i < socketsArray; i++)
+		{
+			if (FD_ISSET(i, &fdread))
 			{
-				std::cout << "server_name: " << *it3 << std::endl;
+				//this is a new connection
+				int clientSocket = accept(i, reinterpret_cast<sockaddr *>(&clientAddr), &clientAddrLen);
+				fcntl(clientSocket, F_SETFL, O_NONBLOCK);
+				FD_SET(clientSocket, &masterRead);
+				if (clientSocket >= num)
+					num = clientSocket + 1;
+				//save fd to separate vector (different from sockets) for later use 
+				fdArray.push_back(clientSocket);
 			}
+		}
+		for (int i = 0; i < fdArray; i++)
+		{
+			if (FD_ISSET(i, &fdread))
+			{
+				recv();
+				if (requestReading == complete)
+					buildResponse();
+					//do something with cgi proccessing (not to wait for it)
+				if (response == ready)
+				{
+					FD_SET(i, &masterWrite);
+					FD_CLR(i, &masterRead);
+				}
+			}
+		}
+		for (int i = 0; i < fdArray; i++)
+		{
+			if (FD_ISSET(i, &fdwrite))
+			{
+				send();
+			}
+			if (sendRequest == complete)
+				FD_CLR(i, &masterWrite);
 		}
 	}
 }
@@ -428,61 +477,11 @@ int main(int argc, char *argv[])
 	if (createListeningSockets(server_config, sockets, num, masterRead))
 		return 1;
 	printListeningSockets(sockets);
-	return 0;
-	// fd_set fdread;
-	// fd_set fdwrite;
-	// FD_ZERO(&fdread);
-	// FD_ZERO(&fdwrite);
-	// while (true)
-	// {
-	// 	fdread = masterRead;
-	// 	fdwrite = masterWrite;
-	// 	// num should be > 0 for select to work
-	// 	if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
-	// 	{
-	// 		perror("select error");
-	// 		exit(1);
-	// 	}
-	// 	// iterate through sockets vector to find which one ready to recieve data after select
-	// 	for (int i = 0; i < socketsArray; i++)
-	// 	{
-	// 		if (FD_ISSET(i, &fdread))
-	// 		{
-	// 			//this is a new connection
-	// 			int clientSocket = accept(i, reinterpret_cast<sockaddr *>(&clientAddr), &clientAddrLen);
-	// 			fcntl(clientSocket, F_SETFL, O_NONBLOCK);
-	// 			FD_SET(clientSocket, &masterRead);
-	// 			if (clientSocket >= num)
-	// 				num = clientSocket + 1;
-	// 			//save fd to separate vector (different from sockets) for later use 
-	// 			fdArray.push_back(clientSocket);
-	// 		}
-	// 	}
-	// 	for (int i = 0; i < fdArray; i++)
-	// 	{
-	// 		if (FD_ISSET(i, &fdread))
-	// 		{
-	// 			recv();
-	// 			if (requestReading == complete)
-	// 				buildResponse();
-	// 				//do something with cgi proccessing (not to wait for it)
-	// 			if (response == ready)
-	// 			{
-	// 				FD_SET(i, &masterWrite);
-	// 				FD_CLR(i, &masterRead);
-	// 			}
-	// 		}
-	// 	}
-	// 	for (int i = 0; i < fdArray; i++)
-	// 	{
-	// 		if (FD_ISSET(i, &fdwrite))
-	// 		{
-	// 			send();
-	// 		}
-	// 		if (sendRequest == complete)
-	// 			FD_CLR(i, &masterWrite);
-	// 	}
-	// }
 
+	if (runServer(sockets))
+	{
+		std::cerr << "Error running server" << std::endl;
+		return 1;
+	}
 	return 0;
 }
