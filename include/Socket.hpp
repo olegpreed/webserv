@@ -7,15 +7,16 @@
 
 class Socket
 {
-private:
-	int _fd;
-	sockaddr_in _addr;
+	private:
+		int _fd;
+		sockaddr_in _addr;
 
-public:
-	void setAddr(sockaddr_in addr);
-	void setFd(int fd);
-	sockaddr_in getAddr() const;
-	std::vector<ServerConfig> serverBlocks;
+	public:
+		void setAddr(sockaddr_in addr);
+		void setFd(int fd);
+		int getFd() const;
+		sockaddr_in getAddr() const;
+		std::vector<ServerConfig> serverBlocks;
 };
 
 #endif

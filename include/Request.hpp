@@ -70,9 +70,11 @@ public:
 	int getTempFileFd() const;
 	ssize_t getBytesRead() const;
 	int getErrorCode() const;
+	bool isReadComplete() const;
 	const std::map<std::string, std::string> &getHeaders() const;
 
 	void setTempFileFd(int tempFileFd);
+	void setStatus(Status status);
 
 	int parse(const std::string &requestChunk);
 	int parseRequestLine();
@@ -83,7 +85,6 @@ public:
 	void removeCurrentDirDots();
 	void simplifyPath();
 	int writeToFile();
-	bool isParsingComplete() const;
 	int createTempFile();
 };
 

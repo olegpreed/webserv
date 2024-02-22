@@ -43,7 +43,7 @@ Request &Request::operator=(const Request &src)
 	return *this;
 }
 
-bool Request::isParsingComplete() const
+bool Request::isReadComplete() const
 {
 	return (_status == DONE);
 }
@@ -86,6 +86,11 @@ int Request::getErrorCode() const
 void Request::setTempFileFd(int tempFileFd) 
 {
 	_tempFileFd = tempFileFd;
+}
+
+void Request::setStatus(Status status)
+{
+	_status = status;
 }
 
 

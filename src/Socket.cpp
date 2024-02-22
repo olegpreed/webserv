@@ -18,4 +18,9 @@ void Socket::setFd(int fd)
 	_fd = fd;
 }
 
+int Socket::getFd() const
+{
+	return _fd;
+}
+
 

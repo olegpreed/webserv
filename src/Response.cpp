@@ -503,8 +503,6 @@ void Response::buildResponse()
 
 void Response::sendResponse(int fd)
 {
-	// char *buff = new char[BUFFSIZE];
-	// memset(buff, 0, BUFFSIZE);
 	if (!_isBodyFile)
 	{
 		_headers.append(_body);
@@ -524,6 +522,5 @@ void Response::sendResponse(int fd)
 		}
 		delete[] buff;
 		std::remove(_bodyPath.c_str());
-		std::cout << "REMOVE [" << request.getPath() << "]" << std::endl;
 	}
 }
