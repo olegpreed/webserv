@@ -2,6 +2,7 @@
 
 void Socket::setAddr(sockaddr_in addr)
 {
+	_addr.sin_len = addr.sin_len;
 	_addr.sin_family = addr.sin_family;
 	_addr.sin_port = addr.sin_port;
 	_addr.sin_addr.s_addr = addr.sin_addr.s_addr;

@@ -13,9 +13,10 @@ class Client
 
 	public:
 		Client(int fd, Socket &socket);
+		~Client();
 		int getFd() const;
-		Request request;
-		Response response;
+		Request *request;
+		Response *response;
 };
 
 #endif

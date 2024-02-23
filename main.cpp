@@ -77,7 +77,7 @@ int castIpAndPort(sockaddr_in &serverAddr, const std::pair<std::string, ssize_t>
 		std::cerr << "Invalid port number" << std::endl;
 		return 1;
 	}
-	serverAddr.sin_port = (in_port_t)portSizeT;
+	serverAddr.sin_port = htons(portSizeT);
 	return 0;
 }
 
@@ -111,6 +111,12 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 			std::cerr << "Failed to create socket" << std::endl;
 			return 1;
 		}
+		if (fcntl(serverSocket, F_SETFL, O_NONBLOCK) < 0)
+		{
+			std::cout << "Error setting socket to non-blocking mode" << std::endl;
+			close(serverSocket);
+			return 1;
+		}
 
 		int enable = 1;
 		setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
@@ -128,7 +134,7 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 			std::cerr << "Failed to listen for connections\n";
 			close(serverSocket);
 			return 1;
-		}		
+		}
 
 		Socket socket;
 		socket.setAddr(serverAddr);
@@ -144,7 +150,7 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 
 int buildResponse(Client &client)
 {
-	client.response.buildResponse();
+	client.response->buildResponse();
 	return 0;
 }
 
@@ -168,8 +174,8 @@ int readRequest(Client &client)
 	else if (bytesRead == 0)
 		return 1; // not sure
 	std::string chunk(buff, bytesRead);
-	if (client.request.parse(chunk))
-		client.request.setStatus(DONE);
+	if (client.request->parse(chunk))
+		client.request->setStatus(DONE);
 	return 0;
 }
 
@@ -187,11 +193,13 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 	{
 		fdread = masterRead;
 		fdwrite = masterWrite;
+		std::cout << "hello" << std::endl;
 		if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
 		{
 			std::cerr << "select() error" << std::endl;
-			// return 1;
+			return 1;
 		}
+		std::cout << "world" << std::endl;
 		for (std::vector<Socket>::iterator it = sockets.begin();
 			it != sockets.end(); ++it)
 		{
@@ -201,6 +209,8 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 				sockaddr_in addr = it->getAddr();
 				int clientSocket = accept(it->getFd(),
 					reinterpret_cast<sockaddr *>(&addr), &addr_length);
+				std::cout << "New connection from " << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port) << std::endl;
+				std::cout << "Client fd is " << clientSocket << std::endl;
 				if (fcntl(clientSocket, F_SETFL, O_NONBLOCK) < 0)
 				{
 					std::cout << "Error setting socket to non-blocking mode" << std::endl;
@@ -221,10 +231,10 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 			{
 				if (readRequest(*it))
 					return 1;
-				if (it->request.isReadComplete())
+				if (it->request->isReadComplete())
 					if (buildResponse(*it))
 						return 1;
-				if (it->response.isReady())
+				if (it->response->isReady())
 				{
 					FD_SET(it->getFd(), &masterWrite);
 					FD_CLR(it->getFd(), &masterRead);
@@ -236,12 +246,13 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 		{
 			if (FD_ISSET(it->getFd(), &fdwrite))
 			{
-				it->response.sendResponse(it->getFd());
+				it->response->sendResponse(it->getFd());
 				// if (sendRequest == complete)
 				// 	FD_CLR(i, &masterWrite);
 			}
 		}
 	}
+	return 0;
 }
 
 int main(int argc, char *argv[])

@@ -38,7 +38,7 @@ class Response
 		int _code;
 
 	public:
-		Response();
+		Response(Request &request);
 		~Response();
 		void buildResponse();
 		void buildCGIResponse();
@@ -62,7 +62,7 @@ class Response
 		void setConfig(ServerConfig config);
 		bool isReady();
 		void sendResponse(int fd);
-		Request request;
+		Request &request;
 };
 
 #endif

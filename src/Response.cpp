@@ -1,6 +1,6 @@
 #include "Response.hpp"
 
-Response::Response() : _isBodyFile(false), _isCGI(false), _isReady(false) {}
+Response::Response(Request &request) : _isBodyFile(false), _isCGI(false), _isReady(false), request(request) {}
 
 Response::~Response() {
 	deleteTempFile();
