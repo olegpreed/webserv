@@ -8,13 +8,14 @@
 class Client
 {
 	private:
-		const int _fd;
-		const Socket &_socket;
+		int _fd;
+		Socket &_socket;
 
 	public:
 		Client(int fd, Socket &socket);
 		~Client();
 		int getFd() const;
+		Socket &getSocket() const;
 		Request *request;
 		Response *response;
 };

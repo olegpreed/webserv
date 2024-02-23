@@ -15,6 +15,21 @@
 #include "Socket.hpp"
 #include "Client.hpp"
 
+int findMatchingServerBlock(std::vector<ServerConfig> &server_config, const std::string &host)
+{
+	for (std::vector<ServerConfig>::iterator it = server_config.begin();
+		it != server_config.end(); ++it)
+	{
+		for (std::vector<std::string>::const_iterator it2 = it->getServerName().begin();
+			it2 != it->getServerName().end(); ++it2)
+		{
+			if (host == *it2)
+				return it - server_config.begin();
+		}
+	}
+	return 0;
+}
+
 int createServerConfig(int argc, char *argv[], std::vector<ServerConfig> &server_config)
 {
 	std::string config_name(DEFAULT);
@@ -47,7 +62,8 @@ void printListeningSockets(std::vector<Socket>  &sockets)
 	for (std::vector<Socket>::iterator it = sockets.begin();
 		it != sockets.end(); ++it)
 	{
-		std::cout << "Server listening on ip " << inet_ntoa(it->getAddr().sin_addr) << " and port " << it->getAddr().sin_port << std::endl;
+		std::cout << "Server listening on ip " << inet_ntoa(it->getAddr().sin_addr) 
+			<< " and port " << ntohs(it->getAddr().sin_port) << std::endl;
 		for (std::vector<ServerConfig>::iterator it2 = it->serverBlocks.begin();
 			it2 != it->serverBlocks.end(); ++it2)
 		{
@@ -111,12 +127,7 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 			std::cerr << "Failed to create socket" << std::endl;
 			return 1;
 		}
-		if (fcntl(serverSocket, F_SETFL, O_NONBLOCK) < 0)
-		{
-			std::cout << "Error setting socket to non-blocking mode" << std::endl;
-			close(serverSocket);
-			return 1;
-		}
+		fcntl(serverSocket, F_SETFL, O_NONBLOCK);
 
 		int enable = 1;
 		setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
@@ -156,8 +167,8 @@ int buildResponse(Client &client)
 
 int readRequest(Client &client)
 {
-	char *buff = new char[BUFFSIZE];
-	memset(buff, 0, BUFFSIZE);
+	char buff[BUFFSIZE + 1];
+	memset(buff, 0, BUFFSIZE + 1);
 	ssize_t bytesRead;
 
 	bytesRead = recv(client.getFd(), buff, BUFFSIZE, 0);
@@ -176,6 +187,7 @@ int readRequest(Client &client)
 	std::string chunk(buff, bytesRead);
 	if (client.request->parse(chunk))
 		client.request->setStatus(DONE);
+	// delete[] buff;
 	return 0;
 }
 
@@ -187,7 +199,7 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 	fd_set fdwrite;
 	FD_ZERO(&fdread);
 	FD_ZERO(&fdwrite);
-	std::vector<Client> clients;
+	std::map<int, Client*> clients;
 
 	while (true)
 	{
@@ -199,56 +211,63 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 			std::cerr << "select() error" << std::endl;
 			return 1;
 		}
-		std::cout << "world" << std::endl;
 		for (std::vector<Socket>::iterator it = sockets.begin();
 			it != sockets.end(); ++it)
 		{
 			if (FD_ISSET(it->getFd(), &fdread))
 			{
-				socklen_t addr_length = sizeof(it->getAddr());
-				sockaddr_in addr = it->getAddr();
+				sockaddr_in clientAddr;
+				socklen_t addr_length = sizeof(clientAddr);
 				int clientSocket = accept(it->getFd(),
-					reinterpret_cast<sockaddr *>(&addr), &addr_length);
-				std::cout << "New connection from " << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port) << std::endl;
+					reinterpret_cast<sockaddr *>(&clientAddr), &addr_length);
+				std::cout << "New connection from " << inet_ntoa(clientAddr.sin_addr)
+					<< ":" << ntohs(clientAddr.sin_port) << std::endl;
 				std::cout << "Client fd is " << clientSocket << std::endl;
-				if (fcntl(clientSocket, F_SETFL, O_NONBLOCK) < 0)
-				{
-					std::cout << "Error setting socket to non-blocking mode" << std::endl;
-					close(clientSocket);
-					return 1;
-				}
+				fcntl(clientSocket, F_SETFL, O_NONBLOCK);
 				FD_SET(clientSocket, &masterRead);
 				if (clientSocket >= num)
 					num = clientSocket + 1;
-				Client client(clientSocket, *it);
-				clients.push_back(client);
+				Client *client = new Client(clientSocket, *it);
+				clients[clientSocket] = client;
 			}
 		}
-		for (std::vector<Client>::iterator it = clients.begin();
+		for (std::map<int, Client*>::iterator it = clients.begin();
 			it != clients.end(); ++it)
 		{
-			if (FD_ISSET(it->getFd(), &fdread))
+			if (FD_ISSET(it->first, &fdread))
 			{
-				if (readRequest(*it))
+				if (readRequest(*it->second))
 					return 1;
-				if (it->request->isReadComplete())
-					if (buildResponse(*it))
-						return 1;
-				if (it->response->isReady())
+				if (it->second->request->isReadComplete())
 				{
-					FD_SET(it->getFd(), &masterWrite);
-					FD_CLR(it->getFd(), &masterRead);
+					int i = findMatchingServerBlock(it->second->getSocket().serverBlocks,
+						it->second->request->getHeaders().at("host"));
+					it->second->response = new Response(*it->second->request,
+						it->second->getSocket().serverBlocks[i]);
+					if (buildResponse(*it->second))
+						return 1;
+				}
+				if (it->second->response->isReady())
+				{
+					FD_SET(it->first, &masterWrite);
+					FD_CLR(it->first, &masterRead);
 				}
 			}
 		}
-		for (std::vector<Client>::iterator it = clients.begin();
+		for (std::map<int, Client*>::iterator it = clients.begin();
 			it != clients.end(); ++it)
 		{
-			if (FD_ISSET(it->getFd(), &fdwrite))
+			if (FD_ISSET(it->first, &fdwrite))
 			{
-				it->response->sendResponse(it->getFd());
-				// if (sendRequest == complete)
-				// 	FD_CLR(i, &masterWrite);
+				if (it->second->response->sendResponse(it->second->getFd()))
+					return 1;
+				if (it->second->response->isSent())
+				{
+					FD_CLR(it->first, &masterWrite);
+					delete it->second;
+					close(it->first);
+					clients.erase(it);
+				}
 			}
 		}
 	}

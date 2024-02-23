@@ -18,7 +18,8 @@
 enum ResponseStatus
 {
 	RESPONSE_HEADERS,
-	RESPONSE_BODY
+	RESPONSE_BODY,
+	SENT
 };
 
 class Response 
@@ -29,16 +30,18 @@ class Response
 		std::string _body;
 		std::string _bodyPath;
 		std::string _headers;
-		ServerConfig _config;
+		ServerConfig &_config;
+		ResponseStatus _status;
 		Location _location;
 		int		_bodySize;
 		bool	_isBodyFile;
 		bool	_isCGI;
 		bool	_isReady;
-		int _code;
+		int 	_code;
+		ssize_t _bytesSent;
 
 	public:
-		Response(Request &request);
+		Response(Request &request, ServerConfig &config);
 		~Response();
 		void buildResponse();
 		void buildCGIResponse();
@@ -61,7 +64,8 @@ class Response
 		int checkAndModifyCGIHeaders();
 		void setConfig(ServerConfig config);
 		bool isReady();
-		void sendResponse(int fd);
+		bool isSent();
+		int sendResponse(int fd);
 		Request &request;
 };
 

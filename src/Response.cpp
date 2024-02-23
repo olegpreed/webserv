@@ -1,6 +1,7 @@
 #include "Response.hpp"
 
-Response::Response(Request &request) : _isBodyFile(false), _isCGI(false), _isReady(false), request(request) {}
+Response::Response(Request &requestSrc, ServerConfig &config) : _config(config), _status(RESPONSE_HEADERS), _isBodyFile(false), 
+	_isCGI(false), _isReady(false), _bytesSent(0), request(requestSrc) {}
 
 Response::~Response() {
 	deleteTempFile();
@@ -15,6 +16,12 @@ bool Response::isReady()
 {
 	return _isReady;
 }
+
+bool  Response::isSent()
+{
+	return (_status == SENT);
+}
+
 
 char** Response::initEnv() {
 	std::vector<std::string> stringEnvp;
@@ -474,6 +481,7 @@ void Response::buildCGIResponse()
 
 void Response::buildResponse()
 {
+	// std::cout << request.getMethod() << " and error: " << _code << std::endl;
 	_code = request.getErrorCode();
 	if (_code == 0)
 		_code = 200;
@@ -501,15 +509,38 @@ void Response::buildResponse()
 	return;
 }
 
-void Response::sendResponse(int fd)
+int Response::sendResponse(int fd)
 {
 	if (!_isBodyFile)
 	{
-		_headers.append(_body);
-		send(fd, _headers.c_str(), _headers.length(), 0);
+		ssize_t i = 0;
+		if (_status == RESPONSE_HEADERS)
+		{
+			std::string chunk = _headers.substr(_bytesSent, BUFF_SIZE);
+			if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
+				return 1;
+			else
+				_bytesSent += i;
+			if (chunk.length() < BUFF_SIZE)
+				_status = RESPONSE_BODY;
+		}
+		else if (_status == RESPONSE_BODY)
+		{
+			std::string chunk = _body.substr(_bytesSent, BUFF_SIZE);
+			if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
+				return 1;
+			else
+				_bytesSent += i;
+			if (chunk.length() < BUFF_SIZE)
+				_status = SENT;
+		}
 	}
 	else 
 	{
+		if (_status == RESPONSE_HEADERS)
+		{
+
+		}
 		send(fd, _headers.c_str(), _headers.length(), 0);
 		size_t size_read = 0;
 		int read_fd = open(_bodyPath.c_str(), O_RDONLY);
@@ -523,4 +554,5 @@ void Response::sendResponse(int fd)
 		delete[] buff;
 		std::remove(_bodyPath.c_str());
 	}
+	return 0;
 }
