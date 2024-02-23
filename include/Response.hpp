@@ -34,6 +34,7 @@ class Response
 		ResponseStatus _status;
 		Location _location;
 		int		_bodySize;
+		int 	_bodyFd;
 		bool	_isBodyFile;
 		bool	_isCGI;
 		bool	_isReady;
@@ -57,7 +58,7 @@ class Response
 		int deleteFile();
 		int uploadFile();
 		int getFileSize(const std::string &file);
-		int deleteTempFile();
+		int deleteTempFiles();
 		char** initEnv();
 		int executeCGI();
 		std::string getCodeMessage();

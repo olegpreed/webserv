@@ -4,7 +4,7 @@ Response::Response(Request &requestSrc, ServerConfig &config) : _config(config),
 	_isCGI(false), _isReady(false), _bytesSent(0), request(requestSrc) {}
 
 Response::~Response() {
-	deleteTempFile();
+	deleteTempFiles();
 }
 
 void Response::setConfig(ServerConfig config)
@@ -25,28 +25,28 @@ bool  Response::isSent()
 
 char** Response::initEnv() {
 	std::vector<std::string> stringEnvp;
-	// std::stringstream ss;
-	// ss << request.getBytesRead();
-	// stringEnvp.push_back("CONTENT_LENGTH=" + ss.str());
-	// ss.clear();
-	// if (request.getHeaders().find("content-type") != request.getHeaders().end())
-	// 	stringEnvp.push_back("CONTENT_TYPE=" + request.getHeaders().at("content-type"));
-	// stringEnvp.push_back("GATEWAY_INTERFACE=CGI/1.1");
-	// stringEnvp.push_back("PATH_TRANSLATED=" + request.getPath());
+	std::stringstream ss;
+	ss << request.getBytesRead();
+	stringEnvp.push_back("CONTENT_LENGTH=" + ss.str());
+	ss.clear();
+	if (request.getHeaders().find("content-type") != request.getHeaders().end())
+		stringEnvp.push_back("CONTENT_TYPE=" + request.getHeaders().at("content-type"));
+	stringEnvp.push_back("GATEWAY_INTERFACE=CGI/1.1");
+	stringEnvp.push_back("PATH_TRANSLATED=" + request.getPath());
 	stringEnvp.push_back("REQUEST_METHOD=" + request.getMethod());
 	stringEnvp.push_back("SERVER_PROTOCOL=HTTP/1.1");
 	stringEnvp.push_back("PATH_INFO=" + request.getPath());
-	// stringEnvp.push_back("QUERY_STRING=" + request.getQuery());
+	stringEnvp.push_back("QUERY_STRING=" + request.getQuery());
 	
-	// for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin();
-	// 	it != request.getHeaders().end(); it++) {
-	// 	std::string header = it->first;
-	// 	if (it->first == "content-type" || it->first == "content-length")
-	// 		continue;
-	// 	std::transform(header.begin(), header.end(), header.begin(), ::toupper);
-	// 	std::string value = it->second;
-	// 	stringEnvp.push_back("HTTP_" + header + "=" + value);
-	// }
+	for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin();
+		it != request.getHeaders().end(); it++) {
+		std::string header = it->first;
+		if (it->first == "content-type" || it->first == "content-length")
+			continue;
+		std::transform(header.begin(), header.end(), header.begin(), ::toupper);
+		std::string value = it->second;
+		stringEnvp.push_back("HTTP_" + header + "=" + value);
+	}
 	char** envp = new char*[stringEnvp.size() + 1];
 	for (size_t i = 0; i < stringEnvp.size(); i++) {
 		envp[i] = new char[stringEnvp[i].size() + 1];
@@ -62,15 +62,12 @@ int Response::executeCGI()
 	char **env = initEnv();
 	_code = CGIInterface::executeCGI(_CGIHeaders, _bodyPath, env, 
 		_location.getCgiPass(), request.getTempFilePath());
-	// _CGIHeaders = "\r\n\r\n";
-	// _bodyPath = "CGI_response.txt";
-	std::cout << "******************" << std::endl;
-	std::cout << _CGIHeaders << std::endl;
-	std::cout << "******************" << std::endl;
+	// std::cout << "******************" << std::endl;
+	// std::cout << _CGIHeaders << std::endl;
+	// std::cout << "******************" << std::endl;
 	delete[] env;
 	_isBodyFile = true;
 	return _code;
-	// return 200;
 }
 
 std::string Response::getCodeMessage()
@@ -245,9 +242,9 @@ int Response::buildAutoindexBody() {
     return 0;
 }
 
-int Response::deleteTempFile()
+int Response::deleteTempFiles()
 {
-	if (std::remove(request.getTempFilePath().c_str()) != 0)
+	if (!std::remove(request.getTempFilePath().c_str()) || !std::remove(_bodyPath.c_str()))
 		return 500;
 	else
 		return 0;
@@ -291,9 +288,6 @@ void Response::buildHeaders()
 	else if (_isCGI)
 	{
 		_headers += _CGIHeaders;
-		// std::cout << "+++++++++++++++++++" << std::endl;
-		// std::cout << _headers << std::endl;
-		// std::cout << "+++++++++++++++++++" << std::endl;
 		return;
 	}
 	std::string MIME;
@@ -402,37 +396,6 @@ int Response::fulfillRequest()
 	return 200;
 }
 
-// int Response::checkAndModifyCGIHeaders()
-// {
-// 	size_t pos = _CGIHeaders.find("\r\n\r\n");
-// 	if (pos == std::string::npos || pos == 0)
-// 		return 1;
-// 	size_t posStart = 0;
-// 	bool contentTypeExists = false;
-// 	pos = _CGIHeaders.find("\r\n");
-// 	while (pos != posStart)
-// 	{
-// 		std::string key, value;
-// 		size_t posSC = _CGIHeaders.find(":", posStart);
-// 		if (posSC == std::string::npos)
-// 			return 1;
-// 		key = _CGIHeaders.substr(posStart, posSC);
-// 		value = _CGIHeaders.substr(posSC + 1, pos);
-// 		if (hasWhiteSpaces(key))
-// 			return 1;
-// 		toLowerCase(key);
-// 		if (key == "content-type")
-// 			contentTypeExists = true;
-// 		posStart = pos + 2;
-// 		pos = _CGIHeaders.find("\r\n", posStart);
-// 	}
-// 	if (!_body.empty() && !contentTypeExists)
-// 		return 1;
-// 	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "Content-length: " 
-// 	+ size_tToString(_bodySize));
-// 	return 0;
-// }
-
 int Response::checkAndModifyCGIHeaders()
 {
 	size_t pos = _CGIHeaders.find("\r\n\r\n");
@@ -481,7 +444,6 @@ void Response::buildCGIResponse()
 
 void Response::buildResponse()
 {
-	// std::cout << request.getMethod() << " and error: " << _code << std::endl;
 	_code = request.getErrorCode();
 	if (_code == 0)
 		_code = 200;
@@ -506,25 +468,31 @@ void Response::buildResponse()
 	buildStatusLine();
 	buildHeaders();
 	_isReady = true;
+	if (_isBodyFile)
+		_bodyFd = open(_bodyPath.c_str(), O_RDONLY);
 	return;
 }
 
 int Response::sendResponse(int fd)
 {
-	if (!_isBodyFile)
+	ssize_t i = 0;
+	if (_status == RESPONSE_HEADERS)
 	{
-		ssize_t i = 0;
-		if (_status == RESPONSE_HEADERS)
+		std::string chunk = _headers.substr(_bytesSent, BUFF_SIZE);
+		if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
+			return 1;
+		else
+			_bytesSent += i;
+		if (chunk.length() < BUFF_SIZE)
 		{
-			std::string chunk = _headers.substr(_bytesSent, BUFF_SIZE);
-			if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
-				return 1;
-			else
-				_bytesSent += i;
-			if (chunk.length() < BUFF_SIZE)
-				_status = RESPONSE_BODY;
+			_status = RESPONSE_BODY;
+			_bytesSent = 0;
+			std::cout << "\033[1;33m" << "Header sent" << "\033[0m" << std::endl;
 		}
-		else if (_status == RESPONSE_BODY)
+	}
+	else if (_status == RESPONSE_BODY)
+	{
+		if (!_isBodyFile)
 		{
 			std::string chunk = _body.substr(_bytesSent, BUFF_SIZE);
 			if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
@@ -532,27 +500,26 @@ int Response::sendResponse(int fd)
 			else
 				_bytesSent += i;
 			if (chunk.length() < BUFF_SIZE)
+			{
 				_status = SENT;
+				std::cout << "\033[1;33m" << "Body sent" << "\033[0m" << std::endl;
+			}
 		}
-	}
-	else 
-	{
-		if (_status == RESPONSE_HEADERS)
+		else 
 		{
-
-		}
-		send(fd, _headers.c_str(), _headers.length(), 0);
-		size_t size_read = 0;
-		int read_fd = open(_bodyPath.c_str(), O_RDONLY);
-		char *buff = new char[BUFFSIZE + 1];
-		memset(buff, 0, BUFFSIZE + 1);
-		while ((size_read = read(read_fd, buff, BUFFSIZE)))
-		{
+			size_t size_read = 0;
+			char *buff = new char[BUFFSIZE + 1];
+			memset(buff, 0, BUFFSIZE + 1);
+			size_read = read(_bodyFd, buff, BUFFSIZE);
 			send(fd, buff, size_read, 0);
-			memset(buff, 0, BUFFSIZE);
+			delete[] buff;
+			if (size_read < BUFFSIZE)
+			{
+				_status = SENT;
+				std::cout << "\033[1;33m" << "Body sent" << "\033[0m" << std::endl;
+				close(_bodyFd);
+			}
 		}
-		delete[] buff;
-		std::remove(_bodyPath.c_str());
 	}
 	return 0;
 }

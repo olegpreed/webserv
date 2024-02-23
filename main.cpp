@@ -205,7 +205,6 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 	{
 		fdread = masterRead;
 		fdwrite = masterWrite;
-		std::cout << "hello" << std::endl;
 		if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
 		{
 			std::cerr << "select() error" << std::endl;
@@ -240,16 +239,19 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 			{
 				if (!it->second->request->isReadComplete() && readRequest(*it->second))
 					return 1;
-				if (it->second->request->isReadComplete())
+				if (it->second->request->isReadComplete() && !it->second->response)
 				{
 					int i = findMatchingServerBlock(it->second->getSocket().serverBlocks,
 						it->second->request->getHeaders().at("host"));
 					it->second->response = new Response(*it->second->request,
 						it->second->getSocket().serverBlocks[i]);
+					std::cout << "\033[1;32m" << "Request: " << it->second->request->getMethod() << std::endl;
+					std::cout << "URL: " << it->second->request->getPath() << "\033[0m" << std::endl;
 					if (buildResponse(*it->second))
 						return 1;
 				}
-				if (it->second->response->isReady())
+				if (it->second->request->isReadComplete() &&
+					it->second->response->isReady())
 				{
 					FD_SET(it->first, &masterWrite);
 					FD_CLR(it->first, &masterRead);
@@ -265,7 +267,6 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 					return 1;
 				if (it->second->response->isSent())
 				{
-					std::cout << "Response sent" << std::endl;
 					FD_CLR(it->first, &masterWrite);
 					delete it->second;
 					close(it->first);

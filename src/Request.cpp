@@ -388,7 +388,6 @@ int Request::parseChunks()
 int Request::parse(const std::string &requestChunk)
 {
 	_buffer += requestChunk;
-	std::cout << "Buffer: " << _buffer << std::endl;
 	if (_status == REQUEST_LINE)
 		_errorCode = parseRequestLine(); // parse the first line of the request
 	if (_status == HEADERS)
@@ -399,6 +398,5 @@ int Request::parse(const std::string &requestChunk)
 		_errorCode = parseBody(); // parse the body of the request
 	if (_status == CHUNKS)
 		_errorCode = parseChunks(); // parse chunks of the body of the request
-	std::cout << "Request: " << _method << std::endl;
 	return _errorCode;
 }

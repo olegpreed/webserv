@@ -2,11 +2,14 @@
 
 Client::Client(int fd, Socket &socket) : _fd(fd), _socket(socket) {
 	request = new Request();
+	response = NULL;
 }
 
 Client::~Client() {
-	delete request;
-	delete response;
+	if (response)
+		delete response;
+	if (request)
+		delete request;
 }
 
 int Client::getFd() const {
