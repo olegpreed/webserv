@@ -231,12 +231,14 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 				clients[clientSocket] = client;
 			}
 		}
+		if (clients.empty())
+			continue;
 		for (std::map<int, Client*>::iterator it = clients.begin();
 			it != clients.end(); ++it)
 		{
 			if (FD_ISSET(it->first, &fdread))
 			{
-				if (readRequest(*it->second))
+				if (!it->second->request->isReadComplete() && readRequest(*it->second))
 					return 1;
 				if (it->second->request->isReadComplete())
 				{
@@ -263,10 +265,12 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 					return 1;
 				if (it->second->response->isSent())
 				{
+					std::cout << "Response sent" << std::endl;
 					FD_CLR(it->first, &masterWrite);
 					delete it->second;
 					close(it->first);
 					clients.erase(it);
+					break;
 				}
 			}
 		}
