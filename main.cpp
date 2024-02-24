@@ -134,7 +134,7 @@ int	createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 
 		if (bind(serverSocket, reinterpret_cast<sockaddr *>(&serverAddr), sizeof(serverAddr)) == -1)
 		{
-			std::cerr << "Failed to bind to port " << PORT << "\n";
+			std::cerr << "Failed to bind to port " << ntohs(serverAddr.sin_port) << std::endl;
 			close(serverSocket);
 			return 1;
 		}
@@ -187,11 +187,10 @@ int readRequest(Client &client)
 	std::string chunk(buff, bytesRead);
 	if (client.request->parse(chunk))
 		client.request->setStatus(DONE);
-	// delete[] buff;
 	return 0;
 }
 
-int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
+int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 {
 	fd_set masterWrite;
 	FD_ZERO(&masterWrite);
@@ -201,10 +200,31 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 	FD_ZERO(&fdwrite);
 	std::map<int, Client*> clients;
 
+	int num;
+	int i = 0;
 	while (true)
 	{
 		fdread = masterRead;
 		fdwrite = masterWrite;
+		num = clients.empty() ? numSock : clients.rbegin()->first + 1;
+		if (i >= 14)
+		{
+			for (std::vector<Socket>::iterator it = sockets.begin();
+			it != sockets.end(); ++it)
+			{
+				if(FD_ISSET(it->getFd(), &fdread))
+					std::cout << "for listening" << it->getFd() << std::endl;
+			}
+			for (std::map<int, Client*>::iterator it = clients.begin();
+				it != clients.end(); ++it)
+			{
+				if(FD_ISSET(it->first, &fdread))
+					std::cout << "for reading" << it->first << std::endl;
+				if (FD_ISSET(it->first, &fdwrite))
+					std::cout << "for writing" << it->first << std::endl;
+			}
+			std::cout << "num is " << num << std::endl;
+		}
 		if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
 		{
 			std::cerr << "select() error" << std::endl;
@@ -271,6 +291,7 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int num)
 					delete it->second;
 					close(it->first);
 					clients.erase(it);
+					i++;
 					break;
 				}
 			}

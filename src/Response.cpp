@@ -62,9 +62,6 @@ int Response::executeCGI()
 	char **env = initEnv();
 	_code = CGIInterface::executeCGI(_CGIHeaders, _bodyPath, env, 
 		_location.getCgiPass(), request.getTempFilePath());
-	// std::cout << "******************" << std::endl;
-	// std::cout << _CGIHeaders << std::endl;
-	// std::cout << "******************" << std::endl;
 	delete[] env;
 	_isBodyFile = true;
 	return _code;
@@ -508,11 +505,10 @@ int Response::sendResponse(int fd)
 		else 
 		{
 			size_t size_read = 0;
-			char *buff = new char[BUFFSIZE + 1];
+			char buff[BUFFSIZE + 1];
 			memset(buff, 0, BUFFSIZE + 1);
 			size_read = read(_bodyFd, buff, BUFFSIZE);
 			send(fd, buff, size_read, 0);
-			delete[] buff;
 			if (size_read < BUFFSIZE)
 			{
 				_status = SENT;
