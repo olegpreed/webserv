@@ -1,6 +1,7 @@
-#!/usr/bin/env python3
+# !/usr/bin/env python3
 
 # install googletans
+
 # pip3 install googletrans==4.0.0-rc1 
 # pip3 install certifi
 
@@ -8,10 +9,10 @@ import cgi
 import os
 import sys
 
-site_packages_path = '/Users/preed/Library/Python/3.11/lib/python/site-packages'
-site_packages_path2 = '/usr/local/lib/python3.11/site-packages'
-sys.path.append(site_packages_path)
-sys.path.append(site_packages_path2)
+# site_packages_path = '/Users/preed/Library/Python/3.11/lib/python/site-packages'
+# site_packages_path2 = '/usr/local/lib/python3.11/site-packages'
+# sys.path.append(site_packages_path)
+# sys.path.append(site_packages_path2)
 
 from googletrans import Translator
 def translate_text(text, dest_language='th'):

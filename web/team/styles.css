@@ -34,18 +34,19 @@ body {
 	height: 250px;
 	overflow: hidden;
 	border: 3px solid rgba(0, 0, 0, 0);
-}
-
-.profile-img:hover {
-	border: 3px solid rgb(221, 255, 0);
-	cursor: pointer;
-	filter: opacity(80%);
+	transition: 0.2s;
 }
 
 .profile-img img {
 	height: 100%;
 	width: 100%;
 	object-fit: cover;
+}
+
+.profile-img:hover {
+	border: 3px solid rgb(221, 255, 0);
+	cursor: pointer;
+	filter: opacity(80%);
 }
 
 .intra-name {

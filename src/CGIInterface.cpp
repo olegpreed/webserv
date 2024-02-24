@@ -81,7 +81,7 @@ int CGIInterface::_execute(std::string& header, std::string& body_path,
 		return _deleteServiceArgs(argv, exit_status);
 	else if (pid == 0) {
 		close(pipe_fd[0]);
-		dup2(pipe_fd[1],STDOUT_FILENO);
+		dup2(pipe_fd[1], STDOUT_FILENO);
 		if (execve(argv[0], argv, envp) == -1) {
 			exit(_deleteServiceArgs(argv, exit_status));
 		}
