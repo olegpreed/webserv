@@ -22,9 +22,19 @@ bool  Response::isSent()
 	return (_status == SENT);
 }
 
+void addSystemEnv(std::vector<std::string> &stringEnvp)
+{
+	extern char **environ;
+	for (int i = 0; environ[i]; i++)
+	{
+		std::string env = environ[i];
+		stringEnvp.push_back(env);
+	}
+}
 
 char** Response::initEnv() {
 	std::vector<std::string> stringEnvp;
+	addSystemEnv(stringEnvp);
 	std::stringstream ss;
 	ss << request.getBytesRead();
 	stringEnvp.push_back("CONTENT_LENGTH=" + ss.str());
@@ -90,14 +100,12 @@ void Response::buildHTML(const std::string &pageTitle, const std::string &pageBo
 
 void Response::buildErrorHTMLBody()
 {
-	std::string errorBody;
-	errorBody.append("<div class='header'><div class='project-name'>WEBSERV</div>");
-	errorBody.append("<div class='logo'><a href='/'><img alt='Home School 42' ");
-	errorBody.append("src='https://42.fr/wp-content/uploads/2021/05/42-Final-sigle-seul.svg'>");
-	errorBody.append("</a></div></div><div class='content'><div class='error-code'>");
-	errorBody.append(intToString(_code));
-	errorBody.append("</div><div class='error-message'>" + CodesTypes::codeMessages.at(_code)+ "</div></div>");
-	buildHTML(intToString(_code), errorBody);
+	_body.append("<html><head><title></title><style>");
+	_body.append("body {height: 100vh;margin: 0;display: flex;flex-direction: column;");
+	_body.append("justify-content: center;align-items: center;font-family: Arial, Helvetica, sans-serif;}");
+	_body.append("</style></head><body><h1>");
+	_body.append(intToString(_code));
+	_body.append("</h1><h2>" + CodesTypes::codeMessages.at(_code) + "</h2></body></html>");
 }
 
 void Response::buildErrorBody()

@@ -261,7 +261,11 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 					return 1;
 				if (it->second->request->isReadComplete() && !it->second->response)
 				{
-					int i = findMatchingServerBlock(it->second->getSocket().serverBlocks,
+					int i;
+					if (it->second->request->getHeaders().find("host") == it->second->request->getHeaders().end())
+						i = 0;
+					else
+						i = findMatchingServerBlock(it->second->getSocket().serverBlocks,
 						it->second->request->getHeaders().at("host"));
 					it->second->response = new Response(*it->second->request,
 						it->second->getSocket().serverBlocks[i]);

@@ -6,6 +6,10 @@ Desktop.ini
 *~
 *.vscode
 
+#Temp files
+input_temp_*
+output_temp_*
+
 # Prerequisites
 *.d
 
