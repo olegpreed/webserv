@@ -58,7 +58,7 @@ class Response
 		int deleteFile();
 		int uploadFile();
 		int getFileSize(const std::string &file);
-		int deleteTempFiles();
+		void deleteTempFiles();
 		char** initEnv();
 		int executeCGI();
 		std::string getCodeMessage();

@@ -1,42 +1,51 @@
-# !/usr/bin/env python3
-
-# install googletans
-
-# pip3 install googletrans==4.0.0-rc1 
-# pip3 install certifi
+#!/usr/bin/env python3
 
 import cgi
-import os
-import sys
+import random
 
-# site_packages_path = '/Users/preed/Library/Python/3.11/lib/python/site-packages'
-# site_packages_path2 = '/usr/local/lib/python3.11/site-packages'
-# sys.path.append(site_packages_path)
-# sys.path.append(site_packages_path2)
+# HTML template
+html_template = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formatted Text</title>
+    <style>
+        .random-color {{
+            display: inline-block;
+            color: rgb({}, {}, {});
+        }}
+    </style>
+</head>
+<body>
+    <h1>{}</h1>
+</body>
+</html>
+"""
 
-from googletrans import Translator
-def translate_text(text, dest_language='th'):
-    translator = Translator()
-    translated = translator.translate(text, dest=dest_language)
-    return translated.text
+# CGI headers
+print("Content-type:text/html\r\n\r\n")
 
-def main():
-    # Parse form data
-    form = cgi.FieldStorage()
+# Get input from form
+form = cgi.FieldStorage()
+if "text" in form:
+    input_text = form.getvalue("text")
+else:
+    input_text = ""
 
-    # Get the English text from the form
-    english_text = form.getvalue("text")
+# Convert text to uppercase
+uppercase_text = input_text.upper()
 
-    # Translate the English text to Thai
-    thai_text = translate_text(english_text)
+# Generate HTML with formatted text
+formatted_text = ""
+for char in uppercase_text:
+    # Generate random RGB values for color
+    r = random.randint(0, 255)
+    g = random.randint(0, 255)
+    b = random.randint(0, 255)
+    # Create span element with random color for each character
+    formatted_text += '<span class="random-color">{}</span>'.format(char)
 
-    # CGI response
-    print("Content-type: text/html\n")
-    print("<html><head><title>Translation Result</title></head><body>")
-    print("<h1>Translation Result</h1>")
-    print("<p><strong>English Text:</strong> {}</p>".format(english_text))
-    print("<p><strong>Thai Translation:</strong> {}</p>".format(thai_text))
-    print("</body></html>")
-
-if __name__ == "__main__":
-    main()
+# Print the formatted HTML page
+print(html_template.format(r, g, b, formatted_text))

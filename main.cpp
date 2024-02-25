@@ -172,18 +172,8 @@ int readRequest(Client &client)
 	ssize_t bytesRead;
 
 	bytesRead = recv(client.getFd(), buff, BUFFSIZE, 0);
-	if (bytesRead < 0)
-	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
-			return 0;
-		else
-		{
-			std::cerr << "Error reading from socket" << std::endl;
-			return 1;
-		}
-	}
-	else if (bytesRead == 0)
-		return 1; // not sure
+	if (bytesRead <= 0)
+		return 1;
 	std::string chunk(buff, bytesRead);
 	if (client.request->parse(chunk))
 		client.request->setStatus(DONE);
@@ -258,7 +248,13 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 			if (FD_ISSET(it->first, &fdread))
 			{
 				if (!it->second->request->isReadComplete() && readRequest(*it->second))
-					return 1;
+				{
+					FD_CLR(it->first, &masterRead);
+					delete it->second;
+					close(it->first);
+					clients.erase(it);
+					break;
+				}
 				if (it->second->request->isReadComplete() && !it->second->response)
 				{
 					int i;

@@ -66,13 +66,19 @@ char** Response::initEnv() {
 	return envp;
 }
 
+void freeEnv(char** envp) {
+	for (int i = 0; envp[i]; i++)
+		delete[] envp[i];
+	delete[] envp;
+}
+
 int Response::executeCGI()
 {
 	_isCGI = true;
 	char **env = initEnv();
 	_code = CGIInterface::executeCGI(_CGIHeaders, _bodyPath, env, 
 		_location.getCgiPass(), request.getTempFilePath());
-	delete[] env;
+	freeEnv(env);
 	_isBodyFile = true;
 	return _code;
 }
@@ -247,12 +253,10 @@ int Response::buildAutoindexBody() {
     return 0;
 }
 
-int Response::deleteTempFiles()
+void Response::deleteTempFiles()
 {
-	if (!std::remove(request.getTempFilePath().c_str()) || !std::remove(_bodyPath.c_str()))
-		return 500;
-	else
-		return 0;
+	std::remove(request.getTempFilePath().c_str());
+	std::remove(_bodyPath.c_str());
 }
 
 int Response::uploadFile()
@@ -491,7 +495,11 @@ int Response::sendResponse(int fd)
 		if (chunk.length() < BUFF_SIZE)
 		{
 			_status = RESPONSE_BODY;
+			if (request.getMethod() == "HEAD")
+				_status = SENT;
 			_bytesSent = 0;
+			std::cout <<  "\033[1;33m" << _code << " " 
+				<< CodesTypes::codeMessages.at(_code) << "\033[0m" << std::endl;
 			std::cout << "\033[1;33m" << "Header sent" << "\033[0m" << std::endl;
 		}
 	}
