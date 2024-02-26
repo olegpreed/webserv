@@ -69,6 +69,7 @@ int CGIInterface::_execute(std::string& header, std::string& body_path,
 		char**& envp, const std::string& cgi_pass, const int& file_fd) {
 	int exit_status = 502;
 	char** argv = _initArgv(cgi_pass);
+	std::cout << "start cgi execve" << std::endl;
 	if (argv == NULL || envp == NULL)
 		return _deleteServiceArgs(argv, exit_status);
 	if (dup2(file_fd, STDIN_FILENO) == -1)
@@ -116,10 +117,12 @@ int CGIInterface::_execute(std::string& header, std::string& body_path,
 			}
 			std::memset(buff, '\0', buff_size + 1);
 		}
+		std::cout << "start write cgi to file" << std::endl;
 		while ((read_size = read(pipe_fd[0], buff, buff_size))) {
 			write(response_fd, buff, read_size);
 			std::memset(buff, '\0', buff_size + 1);
 		}
+		std::cout << "finish write cgi to file" << std::endl;
 		close(pipe_fd[0]);
 		close(response_fd);
 		delete[] buff;
