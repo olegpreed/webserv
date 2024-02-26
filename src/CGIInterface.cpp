@@ -88,7 +88,7 @@ int CGIInterface::_execute(std::string& header, std::string& body_path,
 		}
 	} else if (pid > 0) {
 		close(pipe_fd[1]);
-		body_path = "./ouput_temp_" + _generateFileName(32);
+		body_path = "./output_temp_" + _generateFileName(32);
 		int response_fd = open(body_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0644);
 		if (response_fd == -1)
 			return (_deleteServiceArgs(argv, 500));
