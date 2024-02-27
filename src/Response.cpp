@@ -1,7 +1,7 @@
 #include "Response.hpp"
 
 Response::Response(Request &requestSrc, ServerConfig &config) : _config(config), _status(RESPONSE_HEADERS), _isBodyFile(false), 
-	_isCGI(false), _isReady(false), _bytesSent(0), request(requestSrc) {}
+	_isCGI(false), _isReady(false), _bytesSent(0), _bytesSentAll(0), request(requestSrc) {}
 
 Response::~Response() {
 	deleteTempFiles();
@@ -485,22 +485,22 @@ void Response::buildResponse()
 int Response::sendResponse(int fd)
 {
 	ssize_t i = 0;
+	std::cout <<  "\033[1;33m";
 	if (_status == RESPONSE_HEADERS)
 	{
 		std::string chunk = _headers.substr(_bytesSent, BUFF_SIZE);
+		std::cout << chunk;
 		if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
 			return 1;
 		else
 			_bytesSent += i;
 		if (chunk.length() < BUFF_SIZE)
 		{
+			std::cout << "\033[0m";
 			_status = RESPONSE_BODY;
 			if (request.getMethod() == "HEAD")
 				_status = SENT;
 			_bytesSent = 0;
-			std::cout <<  "\033[1;33m" << _code << " " 
-				<< CodesTypes::codeMessages.at(_code) << "\033[0m" << std::endl;
-			std::cout << "\033[1;33m" << "Header sent" << "\033[0m" << std::endl;
 		}
 	}
 	else if (_status == RESPONSE_BODY)
@@ -524,11 +524,13 @@ int Response::sendResponse(int fd)
 			char buff[BUFFSIZE + 1];
 			memset(buff, 0, BUFFSIZE + 1);
 			size_read = read(_bodyFd, buff, BUFFSIZE);
-			send(fd, buff, size_read, 0);
+			_bytesSentAll += size_read;
+			if (send(fd, buff, size_read, 0) == -1)
+				std::cout << "Error sending body" << std::endl;
 			if (size_read < BUFFSIZE)
 			{
 				_status = SENT;
-				std::cout << "\033[1;33m" << "Body sent" << "\033[0m" << std::endl;
+				std::cout << "Body sent: " << _bytesSentAll << "\033[0m" << std::endl;
 				close(_bodyFd);
 			}
 		}

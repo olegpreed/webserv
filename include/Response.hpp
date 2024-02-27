@@ -40,6 +40,7 @@ class Response
 		bool	_isReady;
 		int 	_code;
 		ssize_t _bytesSent;
+		ssize_t _bytesSentAll;
 
 	public:
 		Response(Request &request, ServerConfig &config);
