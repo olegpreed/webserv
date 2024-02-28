@@ -166,7 +166,10 @@ int createListeningSockets(std::vector<ServerConfig> &server_config, std::vector
 void buildResponse(Client &client)
 {
 	int i;
-	i = findMatchingServerBlock(client.getSocket().serverBlocks,
+	if (client.request->getHeaders().find("host") == client.request->getHeaders().end())
+		i = 0;
+	else
+		i = findMatchingServerBlock(client.getSocket().serverBlocks,
 									client.request->getHeaders().at("host"));
 	client.response = new Response(*client.request, client.getSocket().serverBlocks[i]);
 	client.response->buildResponse();
@@ -183,10 +186,11 @@ int readRequest(Client &client)
 		return 1;
 	std::string chunk(buff, bytesRead);
 	if (client.request->parse(chunk))
+		client.request->setStatus(DONE);
+	if (client.request->isReadComplete())
 	{
 		std::cout << "\033[1;32m" << "Request: " << client.request->getMethod() << std::endl;
 		std::cout << "URL: " << client.request->getPath() << "\033[0m" << std::endl;
-		client.request->setStatus(DONE);
 	}
 	return 0;
 }
@@ -200,7 +204,7 @@ void removeClient(int fd, std::map<int, Client*> &clients, fd_set &set)
 }
 
 void createClientConnection(Socket &socket, std::map<int, Client*> &clients,
-						   fd_set &masterRead, int &num)
+						   fd_set &masterRead)
 {
 	sockaddr_in clientAddr;
 	socklen_t addr_length = sizeof(clientAddr);
@@ -215,8 +219,6 @@ void createClientConnection(Socket &socket, std::map<int, Client*> &clients,
 	std::cout << "New connection from " << 
 		printAddr(clientAddr.sin_addr, clientAddr.sin_port) << std::endl;
 	FD_SET(clientSocket, &masterRead);
-	if (clientSocket >= num)
-		num = clientSocket + 1;
 	Client *client = new Client(clientSocket, socket);
 	clients[clientSocket] = client;
 }
@@ -230,6 +232,7 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 	FD_ZERO(&fdread);
 	FD_ZERO(&fdwrite);
 	std::map<int, Client *> clients;
+	// signal(SIGINT, signal_handler);
 
 	int num;
 	while (true)
@@ -246,7 +249,7 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 			 it != sockets.end(); ++it)
 		{
 			if (FD_ISSET(it->getFd(), &fdread))
-				createClientConnection(*it, clients, masterRead, num);
+				createClientConnection(*it, clients, masterRead);
 		}
 		if (clients.empty())
 			continue;
@@ -260,7 +263,10 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 				if (!request->isReadComplete() && readRequest(*it->second))
 				{
 					removeClient(it->first, clients, masterRead);
-					break;
+					if (clients.empty())
+						break;
+					else
+						continue;
 				}
 				if (request->isReadComplete() && !response)
 					buildResponse(*it->second);
@@ -282,11 +288,21 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 					removeClient(it->first, clients, masterWrite);
 				if (response->isSent())
 					removeClient(it->first, clients, masterWrite);
+				if (clients.empty())
+					break;
 			}
 		}
 	}
 	return 0;
 }
+
+// Signal handler function
+// void signal_handler(int signum, ) {
+// 	sockets.
+// 	std::cout << "Caught signal " << signum << std::endl;
+// 	std::cout << "Freeing memory..." << std::endl;
+//     exit(signum);
+// }
 
 int main(int argc, char *argv[])
 {

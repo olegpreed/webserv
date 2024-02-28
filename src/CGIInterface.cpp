@@ -19,9 +19,10 @@ CGIInterface::~CGIInterface() {
 }
 
 int CGIInterface::_returnIfExeedsHeaderSize(char**& argv, std::string& header,
-	char*& buff, int response_fd, const std::string& body_path) {
+	char*& buff, int pipe_fd, int response_fd, const std::string& body_path) { // kill() <--- ?
 	header.clear();
 	delete[] buff;
+	close(pipe_fd);
 	close(response_fd);
 	std::remove(body_path.c_str());
 	return (_deleteServiceArgs(argv, 431));
@@ -63,58 +64,60 @@ char** CGIInterface::_initArgv(const std::string& cgi_pass) {
 	return argv;
 }
 
-void CGIInterface::_saveHeaderBody(const int pipe_fd[], std::string& body_path,
-	char**& argv, ) {
+int CGIInterface::_saveHeaderBody(const int pipe_fd[], std::string& header,
+	std::string& body_path, char**& argv, int& exit_status) {
 	close(pipe_fd[1]);
-		body_path = "./output_temp_" + _generateFileName(32);
-		int response_fd = open(body_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0644);
-		if (response_fd == -1)
-			return (_deleteServiceArgs(argv, 500));
-		if (fcntl(response_fd, F_SETFL, O_NONBLOCK) == -1) {
-			close(response_fd);
-			return (_deleteServiceArgs(argv, 413));
-		}
-		size_t buff_size = _setBufSize();
-		char* buff = new char[buff_size + 1];
-		std::memset(buff, '\0', buff_size + 1);
-		size_t pos = std::string::npos;
-		size_t read_size;
-		while ((read_size = read(pipe_fd[0], buff, buff_size))) {
-			if (header.size() > MAX_HTTP_HDR)
-				return (_returnIfExeedsHeaderSize(argv, header, buff, response_fd, body_path));
-			std::string buff_read(buff);
-			header += buff_read;
-			pos = header.find(DBL_CRLF);
-			if (pos != std::string::npos) {
-				header.erase(pos + sizeof(DBL_CRLF) - 1);
-				if (header.size() > MAX_HTTP_HDR)
-					return (_returnIfExeedsHeaderSize(argv, header, buff, response_fd, body_path));
-				write(response_fd, buff + pos + sizeof(DBL_CRLF), read_size - header.size());
-				std::memset(buff, '\0', buff_size + 1);
-				break;
-			}
-			std::memset(buff, '\0', buff_size + 1);
-		}
-		while ((read_size = read(pipe_fd[0], buff, buff_size))) {
-			write(response_fd, buff, read_size);
-			std::memset(buff, '\0', buff_size + 1);
-		}
-		close(pipe_fd[0]);
+	body_path = "./output_temp_" + _generateFileName(32);
+	int response_fd = open(body_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0644);
+	if (response_fd == -1)
+		return (_deleteServiceArgs(argv, 500));
+	if (fcntl(response_fd, F_SETFL, O_NONBLOCK) == -1) {
 		close(response_fd);
-		delete[] buff;
-		int status;
-		while (waitpid(-1, &status, WUNTRACED) == -1)
-			;
-		if (WEXITSTATUS(status) != EXIT_FAILURE)// || WIFEXITED(status) == EXIT_SUCCESS) // <---
-			exit_status = 200;
+		return (_deleteServiceArgs(argv, 413));
+	}
+	size_t buff_size = _setBufSize();
+	char* buff = new char[buff_size + 1];
+	std::memset(buff, '\0', buff_size + 1);
+	size_t pos = std::string::npos;
+	size_t read_size;
+	while ((read_size = read(pipe_fd[0], buff, buff_size))) {
+		if (header.size() > MAX_HTTP_HDR)
+			return (_returnIfExeedsHeaderSize(argv, header, buff, pipe_fd[0], response_fd, body_path));
+		std::string buff_read(buff);
+		header += buff_read;
+		pos = header.find(DBL_CRLF);
+		if (pos != std::string::npos) {
+			header.erase(pos + sizeof(DBL_CRLF) - 1);
+			if (header.size() > MAX_HTTP_HDR)
+				return (_returnIfExeedsHeaderSize(argv, header, buff, pipe_fd[0], response_fd, body_path));
+			write(response_fd, buff + pos + sizeof(DBL_CRLF), read_size - header.size());
+			std::memset(buff, '\0', buff_size + 1);
+			break;
+		}
+		std::memset(buff, '\0', buff_size + 1);
+	}
+	while ((read_size = read(pipe_fd[0], buff, buff_size))) {
+		write(response_fd, buff, read_size);
+		std::memset(buff, '\0', buff_size + 1);
+	}
+	close(pipe_fd[0]);
+	close(response_fd);
+	delete[] buff;
+	int status;
+	while (waitpid(-1, &status, WUNTRACED) == -1)
+		;
+	if (WEXITSTATUS(status) != EXIT_FAILURE)// || WIFEXITED(status) == EXIT_SUCCESS) // <--- ?
+		exit_status = 200;
+	return exit_status;
 }
 
-void CGIInterface::_executeScript(const int pipe_fd[], const int& exit_status,
+int CGIInterface::_executeScript(const int pipe_fd[], const int& exit_status,
 	char**& argv, char**& envp) {
 	close(pipe_fd[0]);
 	dup2(pipe_fd[1], STDOUT_FILENO);
 	if (execve(argv[0], argv, envp) == -1)
-		exit(_deleteServiceArgs(argv, exit_status));
+		return (_deleteServiceArgs(argv, exit_status));
+	return 200;
 }
 
 int CGIInterface::_execute(std::string& header, std::string& body_path,
@@ -131,53 +134,10 @@ int CGIInterface::_execute(std::string& header, std::string& body_path,
 	pid_t pid = fork();
 	if (pid == -1)
 		return _deleteServiceArgs(argv, exit_status);
-	else if (pid == 0) {
-		_executeScript(pipe_fd, exit_status, argv, envp);
-	} else if (pid > 0) {
-		_saveHeaderBody();
-		// close(pipe_fd[1]);
-		// body_path = "./output_temp_" + _generateFileName(32);
-		// int response_fd = open(body_path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_APPEND, 0644);
-		// if (response_fd == -1)
-		// 	return (_deleteServiceArgs(argv, 500));
-		// if (fcntl(response_fd, F_SETFL, O_NONBLOCK) == -1) {
-		// 	close(response_fd);
-		// 	return (_deleteServiceArgs(argv, 413));
-		// }
-		// size_t buff_size = _setBufSize();
-		// char* buff = new char[buff_size + 1];
-		// std::memset(buff, '\0', buff_size + 1);
-		// size_t pos = std::string::npos;
-		// size_t read_size;
-		// while ((read_size = read(pipe_fd[0], buff, buff_size))) {
-		// 	if (header.size() > MAX_HTTP_HDR)
-		// 		return (_returnIfExeedsHeaderSize(argv, header, buff, response_fd, body_path));
-		// 	std::string buff_read(buff);
-		// 	header += buff_read;
-		// 	pos = header.find(DBL_CRLF);
-		// 	if (pos != std::string::npos) {
-		// 		header.erase(pos + sizeof(DBL_CRLF) - 1);
-		// 		if (header.size() > MAX_HTTP_HDR)
-		// 			return (_returnIfExeedsHeaderSize(argv, header, buff, response_fd, body_path));
-		// 		write(response_fd, buff + pos + sizeof(DBL_CRLF), read_size - header.size());
-		// 		std::memset(buff, '\0', buff_size + 1);
-		// 		break;
-		// 	}
-		// 	std::memset(buff, '\0', buff_size + 1);
-		// }
-		// while ((read_size = read(pipe_fd[0], buff, buff_size))) {
-		// 	write(response_fd, buff, read_size);
-		// 	std::memset(buff, '\0', buff_size + 1);
-		// }
-		// close(pipe_fd[0]);
-		// close(response_fd);
-		// delete[] buff;
-		// int status;
-		// while (waitpid(-1, &status, WUNTRACED) == -1)
-		// 	;
-		// if (WEXITSTATUS(status) != EXIT_FAILURE)// || WIFEXITED(status) == EXIT_SUCCESS) // <---
-		// 	exit_status = 200;
-	}
+	else if (pid == 0)
+		exit_status = _executeScript(pipe_fd, exit_status, argv, envp);
+	else if (pid > 0)
+		exit_status = _saveHeaderBody(pipe_fd, header, body_path, argv, exit_status);
 	return _deleteServiceArgs(argv, exit_status);
 }
 
@@ -190,12 +150,23 @@ int	CGIInterface::executeCGI(std::string& header, std::string& body_path, char**
 	if (file_fd == -1)
 		return 502;
 	close(file_fd);
-	file_fd = open(body_temp_path.c_str(), O_RDONLY);
-	if (file_fd == -1)
-		return 500;
-	if (fcntl(file_fd, F_SETFL, O_NONBLOCK) == -1) {
-		close(file_fd);
-		return 413;
+	//REQUEST_METHOD=
+	std::string request_method;
+	for (int i = 0; envp[i]; i++) {
+		if (request_method.assign(envp[i], std::strlen(envp[i])).find("REQUEST_METHOD=") == 0) {
+			request_method.erase(0, sizeof(0, "REQUEST_METHOD=") - 1);
+			break;
+		}
+	}
+	if (request_method.find("POST") != std::string::npos || request_method.find("PUT") != std::string::npos) {
+		std::cout << "******************* OPENING FILE **********************" << std::endl;
+		file_fd = open(body_temp_path.c_str(), O_RDONLY); // <---
+		if (file_fd == -1)
+			return 500;
+		if (fcntl(file_fd, F_SETFL, O_NONBLOCK) == -1) {
+			close(file_fd);
+			return 413;
+		}
 	}
 	code = _execute(header, body_path, envp, cgi_pass, file_fd);
 	close(file_fd);

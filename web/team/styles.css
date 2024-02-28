@@ -2,8 +2,20 @@ body {
     font-family: 'Arial', sans-serif;
 	margin: 0;
 	height: 100vh;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+}
+
+
+.main-block {
+    font-family: 'Arial', sans-serif;
+	margin: 0;
+	height: 100vh;
 	padding: 0;
 	display: flex;
+	flex-direction: column;
 	justify-content: center;
 	align-items: center;
 }
@@ -61,4 +73,16 @@ body {
 .tasks {
 	font-size: 18px;
 	padding-right: 30px;
+}
+
+.thanks {
+	justify-self: end;
+	padding-bottom: 30px;
+	font-size: 18px;
+}
+
+.thanks a {
+	all: unset; 
+	cursor: pointer;
+	color: rgb(0, 55, 255);
 }

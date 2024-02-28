@@ -40,7 +40,6 @@ class Response
 		bool	_isReady;
 		int 	_code;
 		ssize_t _bytesSent;
-		ssize_t _bytesSentAll;
 
 	public:
 		Response(Request &request, ServerConfig &config);
@@ -55,7 +54,8 @@ class Response
 		void buildStatusLine();
 		void buildHeaders();
 		int buildFileBody();
-		int setLocation();
+		void setLocation();
+		int getIndex();
 		int deleteFile();
 		int uploadFile();
 		int getFileSize(const std::string &file);
@@ -64,10 +64,11 @@ class Response
 		int executeCGI();
 		std::string getCodeMessage();
 		int checkAndModifyCGIHeaders();
-		void setConfig(ServerConfig config);
 		bool isReady();
 		bool isSent();
 		int sendResponse(int fd);
+		int sendHeaders(int fd);
+		int sendBody(int fd);
 		Request &request;
 };
 

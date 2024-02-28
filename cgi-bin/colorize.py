@@ -28,11 +28,12 @@ html_template = """
 print("Content-type:text/html\r\n\r\n")
 
 # Get input from form
-form = cgi.FieldStorage()
-if "text" in form:
-    input_text = form.getvalue("text")
-else:
-    input_text = ""
+# form = cgi.FieldStorage()
+# if "text" in form:
+#     input_text = form.getvalue("text")
+# else:
+#     input_text = ""
+input_text = "Hello World! I am learning Python"
 
 # Convert text to uppercase
 uppercase_text = input_text.upper()

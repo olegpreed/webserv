@@ -1,15 +1,12 @@
 #include "Response.hpp"
 
-Response::Response(Request &requestSrc, ServerConfig &config) : _config(config), _status(RESPONSE_HEADERS), _isBodyFile(false), 
-	_isCGI(false), _isReady(false), _bytesSent(0), _bytesSentAll(0), request(requestSrc) {}
+Response::Response(Request &requestSrc, ServerConfig &config) : _config(config), 
+	_status(RESPONSE_HEADERS), _bodySize(0), _isBodyFile(false), 
+	_isCGI(false), _isReady(false), _bytesSent(0), 
+	request(requestSrc) {}
 
 Response::~Response() {
 	deleteTempFiles();
-}
-
-void Response::setConfig(ServerConfig config)
-{
-	_config = config;
 }
 
 bool Response::isReady()
@@ -22,6 +19,80 @@ bool  Response::isSent()
 	return (_status == SENT);
 }
 
+int Response::sendHeaders(int fd)
+{
+	int i = 0;
+	std::string chunk = _headers.substr(_bytesSent, BUFF_SIZE);
+	std::cout << chunk;
+	if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
+		return 1;
+	else
+		_bytesSent += i;
+	if (chunk.length() < BUFF_SIZE)
+	{
+		std::cout << "\033[0m";
+		_status = RESPONSE_BODY;
+		if (request.getMethod() == "HEAD")
+			_status = SENT;
+		_bytesSent = 0;
+	}
+	return 0;
+}
+
+int Response::sendBody(int fd)
+{
+	int i = 0;
+	if (!_isBodyFile)
+	{
+		std::string chunk = _body.substr(_bytesSent, BUFF_SIZE);
+		if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
+			return 1;
+		else
+			_bytesSent += i;
+		if (chunk.length() < BUFF_SIZE)
+		{
+			_status = SENT;
+			std::cout << "\033[1;33m" << "Body sent: "
+				<< _bytesSent << "\033[0m" << std::endl;
+		}
+	}
+	else 
+	{
+		size_t size_read = 0;
+		char buff[BUFFSIZE + 1];
+		memset(buff, 0, BUFFSIZE + 1);
+		size_read = read(_bodyFd, buff, BUFFSIZE);
+		_bytesSent += size_read;
+		if (send(fd, buff, size_read, 0) == -1)
+			std::cout << "Error sending body" << std::endl;
+		if (size_read < BUFFSIZE)
+		{
+			_status = SENT;
+			std::cout << "\033[1;33m" << "Body sent: " 
+				<< _bytesSent << "\033[0m" << std::endl;
+			close(_bodyFd);
+		}
+	}
+	return 0;
+}
+
+int Response::sendResponse(int fd)
+{
+	std::cout <<  "\033[1;33m";
+	if (_status == RESPONSE_HEADERS)
+	{
+		if (sendHeaders(fd))
+			return 1;
+	}
+	if (_status == RESPONSE_BODY)
+	{
+		if (sendBody(fd))
+			return 1;
+	}
+	return 0;
+}
+
+
 void addSystemEnv(std::vector<std::string> &stringEnvp)
 {
 	extern char **environ;
@@ -32,9 +103,8 @@ void addSystemEnv(std::vector<std::string> &stringEnvp)
 	}
 }
 
-char** Response::initEnv() {
-	std::vector<std::string> stringEnvp;
-	addSystemEnv(stringEnvp);
+void addCommonEnv(std::vector<std::string> &stringEnvp, Request &request)
+{
 	std::stringstream ss;
 	ss << request.getBytesRead();
 	stringEnvp.push_back("CONTENT_LENGTH=" + ss.str());
@@ -47,7 +117,12 @@ char** Response::initEnv() {
 	stringEnvp.push_back("SERVER_PROTOCOL=HTTP/1.1");
 	stringEnvp.push_back("PATH_INFO=" + request.getPath());
 	stringEnvp.push_back("QUERY_STRING=" + request.getQuery());
-	
+}
+
+char** Response::initEnv() {
+	std::vector<std::string> stringEnvp;
+	addSystemEnv(stringEnvp);
+	addCommonEnv(stringEnvp, request);
 	for (std::map<std::string, std::string>::const_iterator it = request.getHeaders().begin();
 		it != request.getHeaders().end(); it++) {
 		std::string header = it->first;
@@ -93,45 +168,6 @@ std::string Response::getCodeMessage()
 		codeMessage = "Unknown";
 	}
 	return codeMessage;
-}
-
-void Response::buildHTML(const std::string &pageTitle, const std::string &pageBody)
-{
-	_body.append("<html><head><link rel='stylesheet' href='/styles.css'><title>");
-	_body.append(pageTitle);
-	_body.append("</title></head><body>");
-	_body.append(pageBody);
-	_body.append("</body></html>");
-}
-
-void Response::buildErrorHTMLBody()
-{
-	_body.append("<html><head><title></title><style>");
-	_body.append("body {height: 100vh;margin: 0;display: flex;flex-direction: column;");
-	_body.append("justify-content: center;align-items: center;font-family: Arial, Helvetica, sans-serif;}");
-	_body.append("</style></head><body><h1>");
-	_body.append(intToString(_code));
-	_body.append("</h1><h2>" + CodesTypes::codeMessages.at(_code) + "</h2></body></html>");
-}
-
-void Response::buildErrorBody()
-{
-	std::string filename;
-	try {
-		filename = _config.getErrorPage().at(_code);
-	}
-	catch (std::out_of_range &e) {
-		buildErrorHTMLBody();
-		_bodySize = _body.size();
-		return;
-	}
-	std::ifstream file(filename);
-	if (!file.is_open())
-		buildErrorHTMLBody();
-	else
-		_body.assign((std::istreambuf_iterator<char>(file)),
-			std::istreambuf_iterator<char>());
-	_bodySize = _body.size();
 }
 
 bool fileExists(const char* filename) {
@@ -195,12 +231,53 @@ int Response::deleteFile()
     if (isDirectory(_fileOrFolder))
 		return 403;
     if (std::remove(_fileOrFolder.c_str()) == 0) {
-        std::cout << "File deleted successfully.\n" << std::endl;
+        std::cout << _fileOrFolder << " deleted successfully" << std::endl;
 		return 204;
     } else {
-        std::cerr << "Error deleting file" << std::endl;
+        std::cerr << "Error deleting " << _fileOrFolder << std::endl;
 		return 403;
     }
+}
+
+
+void Response::buildHTML(const std::string &pageTitle, const std::string &pageBody)
+{
+	_body.append("<html><head><link rel='stylesheet' href='/styles.css'><title>");
+	_body.append(pageTitle);
+	_body.append("</title></head><body>");
+	_body.append(pageBody);
+	_body.append("</body></html>");
+}
+
+void Response::buildErrorHTMLBody()
+{
+	_body.append("<html><head><title></title><style>");
+	_body.append("body {height: 100vh;margin: 0;display: flex;flex-direction: column;");
+	_body.append("justify-content: center;align-items: center;font-family: Arial, Helvetica, sans-serif;}");
+	_body.append("</style></head><body><h1>");
+	_body.append(intToString(_code));
+	_body.append("</h1><h2>" + CodesTypes::codeMessages.at(_code) + "</h2></body></html>");
+}
+
+void Response::buildErrorBody()
+{
+	_isBodyFile = false;
+	std::string filename;
+	try {
+		filename = _config.getErrorPage().at(_code);
+	}
+	catch (std::out_of_range &e) {
+		buildErrorHTMLBody();
+		_bodySize = _body.size();
+		return;
+	}
+	std::ifstream file(filename);
+	if (!file.is_open())
+		buildErrorHTMLBody();
+	else
+		_body.assign((std::istreambuf_iterator<char>(file)),
+			std::istreambuf_iterator<char>());
+	_bodySize = _body.size();
 }
 
 int Response::buildAutoindexBody() {
@@ -214,7 +291,7 @@ int Response::buildAutoindexBody() {
     DIR* dir = opendir(_fileOrFolder.c_str());
     if (!dir) {
         std::cerr << "Error opening directory" << std::endl;
-        return 404;
+        return 1;
     }
     struct dirent* entry;
     std::string path = request.getPath();
@@ -255,155 +332,31 @@ int Response::buildAutoindexBody() {
 
 void Response::deleteTempFiles()
 {
-	std::remove(request.getTempFilePath().c_str());
-	std::remove(_bodyPath.c_str());
+	std::string rqstTmpFile = request.getTempFilePath();
+	std::string rspTmpFile = _bodyPath;
+	if (rqstTmpFile != "input_" && std::remove(rqstTmpFile.c_str()) == -1)
+		std::cout << "Error deleting temp file" << rqstTmpFile << std::endl;
+	if (!rspTmpFile.empty() && std::remove(rspTmpFile.c_str()) == -1)
+		std::cout << "Error deleting temp file" << rspTmpFile << std::endl;
 }
 
 int Response::uploadFile()
 {
 	if (isDirectory(_fileOrFolder))
 		return 403;
-	_fileOrFolder = _location.getClientBodyTempPath() + "/" + 
-		request.getPath().substr(_location.getLocationPath().length());
+	std::string location = _location.getLocationPath();
+	int cutLength = (location == "/") ? location.length() - 1 : location.length();
+	_fileOrFolder = _location.getClientBodyTempPath() + 
+		request.getPath().substr(cutLength);
+	std::cout << "file path is : " << _fileOrFolder << std::endl;
 	if (rename(request.getTempFilePath().c_str(), _fileOrFolder.c_str()) == 0) {
-        std::cout << "File moved successfully." << std::endl;
+        std::cout << _fileOrFolder << " uploaded successfully" << std::endl;
     } else {
-        std::cerr << "Error moving file." << std::endl;
+        std::cerr << "Error uploading" << _fileOrFolder << std::endl;
     }
 	return 201;
 }
 
-void Response::buildStatusLine()
-{	
-	_headers = "HTTP/1.1 " + intToString(_code) 
-		+ " " + CodesTypes::codeMessages.at(_code) + "\r\n";
-}
-
-void Response::buildHeaders()
-{
-	if (_code == 301 || _code == 302)
-	{
-		_headers += "Location: " + _location.getReturn().second + "\r\n";
-		_headers += "Content-Type: text/html\r\n";
-		_headers += "Content-Length: " + size_tToString(_bodySize) + "\r\n\r\n";
-		return;
-	}
-	else if (_code >= 400 && _code <= 599)
-	{
-		_headers += "Content-Type: text/html\r\n";
-		_headers += "Content-Length: " + size_tToString(_bodySize) + "\r\n\r\n";
-		return;
-	}
-	else if (_isCGI)
-	{
-		_headers += _CGIHeaders;
-		return;
-	}
-	std::string MIME;
-	size_t pos = _fileOrFolder.find_last_of(".");
-	if (pos == std::string::npos || pos == 0)
-		MIME = "text/html";
-	else
-	{
-		std::string extension = _fileOrFolder.substr(_fileOrFolder.find_last_of("."));
-		try {
-			MIME = CodesTypes::MIMEType.at(extension);
-		}
-		catch (std::out_of_range &e) {
-			MIME = "Unknown";
-		}
-	}
-	_headers += "Content-Type: " + MIME + "\r\n";
-	_headers += "Content-Length: " + size_tToString(_bodySize) + "\r\n\r\n";
-}
-
-int Response::setLocation()
-{
-	std::string correctLocationURI;
-	std::string path = request.getPath();
-	std::map<std::string, Location> locations = _config.getLocationMap();
-	for (std::map<std::string, Location>::iterator it = locations.begin(); 
-		it != locations.end(); it++)
-	{
-		std::string locationURI = it->first;
-		if (locationURI.find("/*.") == 0 && request.getMethod() != "GET")
-		// if (locationURI.find("/*.") == 0)
-		{
-			locationURI = locationURI.substr(2);
-			if (path.find(locationURI) == (path.length() - locationURI.length()))
-			{
-				_location = it->second;
-				_fileOrFolder.clear();
-				return 0;
-			}
-			continue;
-		}
-		if (path.find(locationURI) == 0)
-		{
-			if (path == locationURI)
-			{
-				_location = it->second;
-				_fileOrFolder = _location.getRoot();
-				return 0;
-			}
-			else if (locationURI == "/"
-				|| (path.length() > locationURI.length() 
-				&& path[locationURI.length()] == '/'))
-			{
-					correctLocationURI = locationURI;
-			}
-		}
-	}
-	_location = locations.at(correctLocationURI);
-	_fileOrFolder = _location.getRoot() + 
-		(correctLocationURI == "/" ? path : path.substr(correctLocationURI.length()));
-	return 0;
-}
-
-int Response::fulfillRequest()
-{
-	if ((_code = setLocation()))
-		return _code;
-	std::set<std::string> limitExcept = _location.getLimitExcept();
-	if (_location.getReturn().first != -1)
-		return _location.getReturn().first;
-	if (std::find(limitExcept.begin(), limitExcept.end(), request.getMethod())
-		== limitExcept.end())
-		return 405;
-	if (request.getMethod() == "DELETE")
-		return deleteFile();
-	if (request.getBytesRead() > _location.getClientMaxBodySize())
-		return 413;
-	if (_location.getAutoindex() && isDirectory(_fileOrFolder))
-	{
-		if (buildAutoindexBody())
-			return 404;
-	}
-	else if (!_location.getAutoindex() && isDirectory(_fileOrFolder)
-		&& (request.getMethod() == "GET" || request.getMethod() == "HEAD"))
-	{
-		std::vector<std::string> index = _location.getIndex();
-		if (index.empty())
-			return 403;
-		std::string folderPath = _fileOrFolder;
-		for (std::vector<std::string>::iterator it = index.begin(); it != index.end(); it++)
-		{
-			_fileOrFolder = folderPath + "/" + *it;
-			if ((_code = buildFileBody()) == 200)
-				return _code;
-		}
-		return _code;
-	}
-	else if (!_location.getCgiPass().empty() && request.getMethod() != "GET")
-	// else if (!_location.getCgiPass().empty())
-		return executeCGI();
-	else if (_location.getCgiPass().empty() &&
-		(request.getMethod() == "POST" || request.getMethod() == "PUT"))
-		return uploadFile();
-	else 
-		return buildFileBody();
-	return 200;
-}
 
 int Response::checkAndModifyCGIHeaders()
 {
@@ -433,8 +386,7 @@ int Response::checkAndModifyCGIHeaders()
 	}
 	if (!_body.empty() && !contentTypeExists)
 		return 1;
-	_CGIHeaders.insert(_CGIHeaders.find("\r\n\r\n"), "\r\nContent-length: " 
-	+ size_tToString(_bodySize));
+	_CGIHeaders.erase(_CGIHeaders.find("\r\n\r\n") + 2);
 	return 0;
 }
 
@@ -451,28 +403,137 @@ void Response::buildCGIResponse()
 	}
 }
 
+void Response::buildStatusLine()
+{	
+	_headers = "HTTP/1.1 " + intToString(_code) 
+		+ " " + CodesTypes::codeMessages.at(_code) + "\r\n";
+}
+
+void Response::buildHeaders()
+{
+	if (_code == 301 || _code == 302)
+		_headers += "Location: " + _location.getReturn().second + "\r\n";
+	else if (_code >= 400 && _code <= 599)
+		_headers += "Content-Type: text/html\r\n";
+	else if (_isCGI)
+		_headers += _CGIHeaders;
+	else 
+	{
+		std::string MIME;
+		size_t pos = _fileOrFolder.find_last_of(".");
+		if (pos == std::string::npos || pos == 0)
+			MIME = "text/html";
+		else
+		{
+			std::string extension = _fileOrFolder.substr(_fileOrFolder.find_last_of("."));
+			try {
+				MIME = CodesTypes::MIMEType.at(extension);
+			}
+			catch (std::out_of_range &e) {
+				MIME = "Unknown";
+			}
+		}
+		_headers += "Content-Type: " + MIME + "\r\n";
+	}
+	_headers += "Content-Length: " + size_tToString(_bodySize) + "\r\n\r\n";
+}
+
+int Response::getIndex()
+{
+	std::vector<std::string> index = _location.getIndex();
+	if (index.empty())
+		return 403;
+	std::string folderPath = _fileOrFolder;
+	for (std::vector<std::string>::iterator it = index.begin(); 
+		it != index.end(); it++)
+	{
+		_fileOrFolder = folderPath + "/" + *it;
+		if ((_code = buildFileBody()) == 200)
+			return _code;
+	}
+	return _code;
+}
+
+void Response::setLocation()
+{
+	std::string correctLocationURI;
+	std::string path = request.getPath();
+	const std::map<std::string, Location> &locations = _config.getLocationMap();
+	for (std::map<std::string, Location>::const_iterator it = locations.begin(); 
+		it != locations.end(); it++)
+	{
+		std::string locationURI = it->first;
+		if (locationURI.find("/*.") == 0)
+		{
+			locationURI = locationURI.substr(2);
+			if (path.find(locationURI) == (path.length() - locationURI.length()))
+			{
+				_location = it->second;
+				_fileOrFolder.clear();
+				return;
+			}
+			continue;
+		}
+		if (path.find(locationURI) == 0)
+		{
+			if (path == locationURI)
+			{
+				_location = it->second;
+				_fileOrFolder = _location.getRoot();
+				return;
+			}
+			else if (locationURI == "/" || path[locationURI.length()] == '/')
+				correctLocationURI = locationURI;
+		}
+	}
+	_location = locations.at(correctLocationURI);
+	_fileOrFolder = _location.getRoot() + 
+		(correctLocationURI == "/" ? path : path.substr(correctLocationURI.length()));
+}
+
+int Response::fulfillRequest()
+{
+	setLocation();
+	std::set<std::string> limitExcept = _location.getLimitExcept();
+	if (_location.getReturn().first != -1)
+		return _location.getReturn().first;
+	if (std::find(limitExcept.begin(), limitExcept.end(), request.getMethod())
+		== limitExcept.end())
+		return 405;
+	if (request.getMethod() == "DELETE")
+		return deleteFile();
+	if (request.getBytesRead() > _location.getClientMaxBodySize())
+		return 413;
+	if (_location.getAutoindex() && isDirectory(_fileOrFolder))
+	{
+		if (buildAutoindexBody())
+			return 403;
+	}
+	else if (!_location.getAutoindex() && isDirectory(_fileOrFolder)
+		&& (request.getMethod() == "GET" || request.getMethod() == "HEAD"))
+		return getIndex();
+	else if (!_location.getCgiPass().empty())
+		return executeCGI();
+	else if (request.getMethod() == "POST" || request.getMethod() == "PUT")
+		return uploadFile();
+	else 
+		return buildFileBody();
+	return 200;
+}
+
 void Response::buildResponse()
 {
 	_code = request.getErrorCode();
-	if (_code == 0)
-		_code = 200;
+	_code = _code == 0 ? 200 : _code;
 	if (_code != 200)
 		buildErrorBody();
 	else 
 	{
 		_code = fulfillRequest();
+		if (_isCGI)
+			buildCGIResponse();
 		if (_code > 399 && _code < 600)
 			buildErrorBody();
-	}
-	if (_isCGI)
-	{
-		buildCGIResponse();
-		if (_code > 399 && _code < 600)
-		{
-			_CGIHeaders.clear();
-			_isBodyFile = false;
-			buildErrorBody();
-		}
 	}
 	buildStatusLine();
 	buildHeaders();
@@ -480,60 +541,4 @@ void Response::buildResponse()
 	if (_isBodyFile)
 		_bodyFd = open(_bodyPath.c_str(), O_RDONLY);
 	return;
-}
-
-int Response::sendResponse(int fd)
-{
-	ssize_t i = 0;
-	std::cout <<  "\033[1;33m";
-	if (_status == RESPONSE_HEADERS)
-	{
-		std::string chunk = _headers.substr(_bytesSent, BUFF_SIZE);
-		std::cout << chunk;
-		if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
-			return 1;
-		else
-			_bytesSent += i;
-		if (chunk.length() < BUFF_SIZE)
-		{
-			std::cout << "\033[0m";
-			_status = RESPONSE_BODY;
-			if (request.getMethod() == "HEAD")
-				_status = SENT;
-			_bytesSent = 0;
-		}
-	}
-	else if (_status == RESPONSE_BODY)
-	{
-		if (!_isBodyFile)
-		{
-			std::string chunk = _body.substr(_bytesSent, BUFF_SIZE);
-			if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
-				return 1;
-			else
-				_bytesSent += i;
-			if (chunk.length() < BUFF_SIZE)
-			{
-				_status = SENT;
-				std::cout << "\033[1;33m" << "Body sent" << "\033[0m" << std::endl;
-			}
-		}
-		else 
-		{
-			size_t size_read = 0;
-			char buff[BUFFSIZE + 1];
-			memset(buff, 0, BUFFSIZE + 1);
-			size_read = read(_bodyFd, buff, BUFFSIZE);
-			_bytesSentAll += size_read;
-			if (send(fd, buff, size_read, 0) == -1)
-				std::cout << "Error sending body" << std::endl;
-			if (size_read < BUFFSIZE)
-			{
-				_status = SENT;
-				std::cout << "Body sent: " << _bytesSentAll << "\033[0m" << std::endl;
-				close(_bodyFd);
-			}
-		}
-	}
-	return 0;
 }

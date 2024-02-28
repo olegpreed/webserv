@@ -60,16 +60,22 @@ body {
 	gap: 40px;
 }
 
-#myTextarea {
+.text-area {
 	border: none;
     outline: none;
 	border-radius: 20px;
 	padding: 10px 30px;
+	color: #000000;
+	font-size: 20px;
 	width: 600px; /* Set the fixed width */
     height: 200px; /* Set the fixed height */
     resize: none; /* Disable resizing */
     overflow: auto; /* Enable scrolling if content overflows */
 	background-color: aliceblue;
+}
+
+.output {
+	/* background-color: rgb(255, 255, 255); */
 }
 
 button[type="submit"] {

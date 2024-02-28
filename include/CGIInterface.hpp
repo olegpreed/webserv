@@ -31,16 +31,17 @@ class CGIInterface {
 
 		static int			_execute(std::string& header, std::string& body_path,
 			char**& envp, const std::string& cgi_pass, const int& file_fd);
-		static void			_executeScript(const int pipe_fd[], const int& exit_status,
+		static int			_executeScript(const int pipe_fd[], const int& exit_status,
 			char**& argv, char**& envp);
-		static void			_saveHeaderBody();
+		static int			_saveHeaderBody(const int pipe_fd[], std::string& header,
+			std::string& body_path, char**& argv, int& exit_status);
 		static char**		_initArgv(const std::string& cgi_pass);
 		static int			_deleteServiceArgs(char**& argv, const int& status);
 		static void			_deleteCharArray(char**& array);
 		static std::string	_generateFileName(const int& length);
 		static size_t		_setBufSize();
 		static int			_returnIfExeedsHeaderSize(char**& argv, std::string& header,
-			char*& buff, int response_fd, const std::string& body_path);
+			char*& buff, int pipe_fd, int response_fd, const std::string& body_path);
 
 	public:
 		static int	executeCGI(std::string& header, std::string& body_path, char**& envp,

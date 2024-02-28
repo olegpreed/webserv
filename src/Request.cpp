@@ -282,24 +282,21 @@ int Request::beforeParseBody()
 		return 411;
 	else
 	{
-		try
-		{
+		try {
 			_bodySize = std::stoi(_headers["content-length"]);
 		}
-		catch (const std::invalid_argument &e)
-		{
+		catch (const std::invalid_argument &e) {
 			return 400;
 		}
-		catch (const std::out_of_range &e)
-		{
+		catch (const std::out_of_range &e) {
 			return 400;
 		}
 	}
-	if (_bodySize == 0)
-	{
-		_status = DONE;
-		return 0;
-	}
+	// if (_bodySize == 0)
+	// {
+	// 	_status = DONE;
+	// 	return 0;
+	// }
 	Config::createTempFile(_tempFilePath, _tempFileFd);
 	_status = BODY;
 	return 0;
