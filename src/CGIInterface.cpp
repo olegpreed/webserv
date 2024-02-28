@@ -126,7 +126,9 @@ int CGIInterface::_execute(std::string& header, std::string& body_path,
 	char** argv = _initArgv(cgi_pass);
 	if (argv == NULL || envp == NULL)
 		return _deleteServiceArgs(argv, exit_status);
-	if (dup2(file_fd, STDIN_FILENO) == -1)
+	if (file_fd == -1)
+		close(STDIN_FILENO);
+	else if (dup2(file_fd, STDIN_FILENO) == -1)
 		return _deleteServiceArgs(argv, exit_status);
 	int pipe_fd[2];
 	if (pipe(pipe_fd) == -1)
@@ -145,12 +147,13 @@ int	CGIInterface::executeCGI(std::string& header, std::string& body_path, char**
 			const std::string& cgi_pass, const std::string& body_temp_path) {
 	srand(time(NULL));
 	int code = -1;
-	int file_fd;
+	int file_fd = -1;
 	file_fd = open(cgi_pass.c_str(), O_RDONLY);
 	if (file_fd == -1)
 		return 502;
 	close(file_fd);
-	//REQUEST_METHOD=
+	// REQUEST_METHOD=
+	file_fd = -1;
 	std::string request_method;
 	for (int i = 0; envp[i]; i++) {
 		if (request_method.assign(envp[i], std::strlen(envp[i])).find("REQUEST_METHOD=") == 0) {
@@ -159,8 +162,7 @@ int	CGIInterface::executeCGI(std::string& header, std::string& body_path, char**
 		}
 	}
 	if (request_method.find("POST") != std::string::npos || request_method.find("PUT") != std::string::npos) {
-		std::cout << "******************* OPENING FILE **********************" << std::endl;
-		file_fd = open(body_temp_path.c_str(), O_RDONLY); // <---
+		file_fd = open(body_temp_path.c_str(), O_RDONLY);
 		if (file_fd == -1)
 			return 500;
 		if (fcntl(file_fd, F_SETFL, O_NONBLOCK) == -1) {
