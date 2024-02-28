@@ -57,6 +57,8 @@ if "text" in form:
 else:
 	src_txt = ""
 
+# src_txt = "Hello World!"
+
 # Translate the English text to Thai
 thai_text = translate_text(src_txt)
 

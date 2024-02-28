@@ -91,7 +91,12 @@ button[type="submit"] {
 button[type="submit"]:hover {
     background-color: #ffffff; /* Darker blue background color */
     color: #000000; 
+}
 
+.small-button {
+	margin-top: 100px;
+	padding: 0 25px;
+	width: 40px;
 }
 
 .table td {

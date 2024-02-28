@@ -9,6 +9,7 @@ class Client
 {
 	private:
 		int _fd;
+		sockaddr_in _addr;
 		Socket &_socket;
 
 	public:
@@ -16,6 +17,8 @@ class Client
 		~Client();
 		int getFd() const;
 		Socket &getSocket() const;
+		void setAddr(sockaddr_in addr);
+		sockaddr_in getAddr() const;
 		Request *request;
 		Response *response;
 };

@@ -30,7 +30,7 @@ int Response::sendHeaders(int fd)
 		_bytesSent += i;
 	if (chunk.length() < BUFF_SIZE)
 	{
-		std::cout << "\033[0m";
+		std::cout << "\033[1;33m" << "Headers sent" << "\033[0m" << std::endl;
 		_status = RESPONSE_BODY;
 		if (request.getMethod() == "HEAD")
 			_status = SENT;
@@ -65,6 +65,7 @@ int Response::sendBody(int fd)
 		_bytesSent += size_read;
 		if (send(fd, buff, size_read, 0) == -1)
 			std::cout << "Error sending body" << std::endl;
+		std::cout << size_read << std::endl; 
 		if (size_read < BUFFSIZE)
 		{
 			_status = SENT;
@@ -78,7 +79,6 @@ int Response::sendBody(int fd)
 
 int Response::sendResponse(int fd)
 {
-	std::cout <<  "\033[1;33m";
 	if (_status == RESPONSE_HEADERS)
 	{
 		if (sendHeaders(fd))
@@ -153,6 +153,7 @@ int Response::executeCGI()
 	char **env = initEnv();
 	_code = CGIInterface::executeCGI(_CGIHeaders, _bodyPath, env, 
 		_location.getCgiPass(), request.getTempFilePath());
+	std::cout << "CGI code: " << _code << std::endl;
 	freeEnv(env);
 	_isBodyFile = true;
 	return _code;

@@ -58,10 +58,6 @@ private:
 
 public:
 	Request();
-	~Request();
-	Request(const Request &src);
-	Request &operator=(const Request &src);
-
 	const std::string &getMethod() const;
 	const std::string &getPath() const;
 	const std::string &getVersion() const;

@@ -9,40 +9,6 @@ Request::Request()
 	_tempFileFd = -1;
 }
 
-Request::~Request()
-{
-	if (_tempFileFd != -1)
-		close(_tempFileFd);
-}
-
-Request::Request(const Request &src)
-{
-	*this = src;
-}
-
-Request &Request::operator=(const Request &src)
-{
-	if (this != &src)
-	{
-		_method = src._method;
-		_path = src._path;
-		_version = src._version;
-		_query = src._query;
-		_headers = src._headers;
-		_tempFileFd = src._tempFileFd;
-		_tempFilePath = src._tempFilePath;
-		_chunkSize = src._chunkSize;
-		_bodySize = src._bodySize;
-		_bytesRead = src._bytesRead;
-		_buffer = src._buffer;
-		_bodyBuffer = src._bodyBuffer;
-		_errorCode = src._errorCode;
-		_status = src._status;
-		_chunkStatus = src._chunkStatus;
-	}
-	return *this;
-}
-
 bool Request::isReadComplete() const
 {
 	return (_status == DONE);
@@ -292,11 +258,6 @@ int Request::beforeParseBody()
 			return 400;
 		}
 	}
-	// if (_bodySize == 0)
-	// {
-	// 	_status = DONE;
-	// 	return 0;
-	// }
 	Config::createTempFile(_tempFilePath, _tempFileFd);
 	_status = BODY;
 	return 0;
@@ -323,6 +284,7 @@ int Request::parseBody()
 		if (writeToFile())
 			return 500;
 		_status = DONE;
+		close(_tempFileFd);
 		_buffer.clear();
 		return 0;
 	}
@@ -343,6 +305,7 @@ int Request::parseChunks()
 			if (_chunkSize == 0)
 			{
 				_status = DONE;
+				close(_tempFileFd);
 				if (!_bodyBuffer.empty() && writeToFile())
 					return 500;
 				_buffer.clear();

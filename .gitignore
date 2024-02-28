@@ -19,6 +19,9 @@ output_temp_*
 *.obj
 *.elf
 
+# For python modules
+requirements.txt
+
 # Linker output
 *.ilk
 *.map

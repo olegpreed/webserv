@@ -195,12 +195,14 @@ int readRequest(Client &client)
 	return 0;
 }
 
-void removeClient(int fd, std::map<int, Client*> &clients, fd_set &set)
+std::map<int, Client *>::iterator removeClient(std::map<int, Client *>::iterator it, std::map<int, Client*> &clients, fd_set &set)
 {
-	FD_CLR(fd, &set);
-	delete clients[fd];
-	close(fd);
-	clients.erase(fd);
+	std::cout << "Client " << printAddr(clients[it->first]->getAddr().sin_addr,
+		clients[it->first]->getAddr().sin_port) << " disconnected" << std::endl;
+	FD_CLR(it->first, &set);
+	delete clients[it->first];
+	close(it->first);
+	return clients.erase(it);
 }
 
 void createClientConnection(Socket &socket, std::map<int, Client*> &clients,
@@ -220,6 +222,7 @@ void createClientConnection(Socket &socket, std::map<int, Client*> &clients,
 		printAddr(clientAddr.sin_addr, clientAddr.sin_port) << std::endl;
 	FD_SET(clientSocket, &masterRead);
 	Client *client = new Client(clientSocket, socket);
+	client->setAddr(clientAddr);
 	clients[clientSocket] = client;
 }
 
@@ -232,7 +235,6 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 	FD_ZERO(&fdread);
 	FD_ZERO(&fdwrite);
 	std::map<int, Client *> clients;
-	// signal(SIGINT, signal_handler);
 
 	int num;
 	while (true)
@@ -240,6 +242,31 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 		fdread = masterRead;
 		fdwrite = masterWrite;
 		num = clients.empty() ? numSock : clients.rbegin()->first + 1;
+		// for (std::vector<Socket>::iterator it = sockets.begin();
+		// 	 it != sockets.end(); ++it)
+		// {
+		// 	if (FD_ISSET(it->getFd(), &fdread))
+		// 		std::cout << "Server " << it->getFd() << " " << printAddr(it->getAddr().sin_addr, 
+		// 	it->getAddr().sin_port) << " is ready" << std::endl;
+		// }
+		// if (!clients.empty())
+		// {
+		// 	for (std::map<int, Client *>::iterator it = clients.begin();
+		// 	 it != clients.end(); ++it)
+		// 	{
+		// 		if (FD_ISSET(it->first, &fdread))
+		// 			std::cout << "Client " << it->first << " " << printAddr(it->second->getAddr().sin_addr,
+		// 				it->second->getAddr().sin_port) << " is ready for read" << std::endl;
+		// 	}
+		// 	for (std::map<int, Client *>::iterator it = clients.begin();
+		// 		it != clients.end(); ++it)
+		// 	{
+		// 		if (FD_ISSET(it->first, &fdwrite))
+		// 			std::cout << "Client " << it->first << " " << printAddr(it->second->getAddr().sin_addr,
+		// 				it->second->getAddr().sin_port) << " is ready for write" << std::endl;
+		// 	}
+		// }
+		std::cout << "num is " << num << std::endl;
 		if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
 		{
 			std::cerr << "select() error" << std::endl;
@@ -262,9 +289,9 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 				Response *response = it->second->response;
 				if (!request->isReadComplete() && readRequest(*it->second))
 				{
-					removeClient(it->first, clients, masterRead);
-					if (clients.empty())
-						break;
+					it = removeClient(it, clients, masterRead);
+					if (it == clients.end())
+				        break;
 					else
 						continue;
 				}
@@ -285,24 +312,16 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 			{
 				Response *response = it->second->response;
 				if (response->sendResponse(it->second->getFd()))
-					removeClient(it->first, clients, masterWrite);
+					it = removeClient(it, clients, masterWrite);
 				if (response->isSent())
-					removeClient(it->first, clients, masterWrite);
-				if (clients.empty())
-					break;
+					it = removeClient(it, clients, masterWrite);
+				if (it == clients.end())
+				        break;
 			}
 		}
 	}
 	return 0;
 }
-
-// Signal handler function
-// void signal_handler(int signum, ) {
-// 	sockets.
-// 	std::cout << "Caught signal " << signum << std::endl;
-// 	std::cout << "Freeing memory..." << std::endl;
-//     exit(signum);
-// }
 
 int main(int argc, char *argv[])
 {
