@@ -126,9 +126,11 @@ int CGIInterface::_execute(std::string& header, std::string& body_path,
 	char** argv = _initArgv(cgi_pass);
 	if (argv == NULL || envp == NULL)
 		return _deleteServiceArgs(argv, exit_status);
-	if (file_fd == -1)
-		;
-	else if (dup2(file_fd, STDIN_FILENO) == -1)
+	// if (file_fd == -1)
+	// 	;
+	// else if (dup2(file_fd, STDIN_FILENO) == -1)
+	// 	return _deleteServiceArgs(argv, exit_status);
+	if (dup2(file_fd, STDIN_FILENO) == -1)
 		return _deleteServiceArgs(argv, exit_status);
 	int pipe_fd[2];
 	if (pipe(pipe_fd) == -1)
@@ -147,13 +149,10 @@ int	CGIInterface::executeCGI(std::string& header, std::string& body_path, char**
 			const std::string& cgi_pass, const std::string& body_temp_path) {
 	srand(time(NULL));
 	int code = -1;
-	int file_fd = -1;
-	file_fd = open(cgi_pass.c_str(), O_RDONLY);
+	int file_fd = open(cgi_pass.c_str(), O_RDONLY);
 	if (file_fd == -1)
 		return 502;
 	close(file_fd);
-	// REQUEST_METHOD=
-	file_fd = -1;
 	std::string request_method;
 	for (int i = 0; envp[i]; i++) {
 		if (request_method.assign(envp[i], std::strlen(envp[i])).find("REQUEST_METHOD=") == 0) {
@@ -169,8 +168,20 @@ int	CGIInterface::executeCGI(std::string& header, std::string& body_path, char**
 			close(file_fd);
 			return 413;
 		}
+		code = _execute(header, body_path, envp, cgi_pass, file_fd);
 	}
-	code = _execute(header, body_path, envp, cgi_pass, file_fd);
+	else {
+		std::string temp_file = "./cgi_input_temp_" + _generateFileName(32);
+		file_fd = open(temp_file.c_str(), O_RDONLY | O_CREAT | O_EXCL | O_TRUNC, 0644);
+		if (file_fd == -1)
+			return 500;
+		if (fcntl(file_fd, F_SETFL, O_NONBLOCK) == -1) {
+			close(file_fd);
+			return 413;
+		}
+		code = _execute(header, body_path, envp, cgi_pass, file_fd);
+		std::remove(temp_file.c_str());
+	}
 	close(file_fd);
 	return code;
 }
