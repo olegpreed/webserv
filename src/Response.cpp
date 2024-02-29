@@ -26,15 +26,12 @@ int Response::sendHeaders(int fd)
 	std::cout << chunk;
 	if ((i = send(fd, chunk.c_str(), chunk.length(), 0)) < 0)
 		return 1;
-	else
-		_bytesSent += i;
 	if (chunk.length() < BUFF_SIZE)
 	{
 		std::cout << "\033[1;33m" << "Headers sent" << "\033[0m" << std::endl;
 		_status = RESPONSE_BODY;
 		if (request.getMethod() == "HEAD")
 			_status = SENT;
-		_bytesSent = 0;
 	}
 	return 0;
 }
@@ -63,8 +60,8 @@ int Response::sendBody(int fd)
 		memset(buff, 0, BUFFSIZE + 1);
 		size_read = read(_bodyFd, buff, BUFFSIZE);
 		_bytesSent += size_read;
-		if (send(fd, buff, size_read, 0) == -1)
-			std::cout << "Error sending body" << std::endl;
+		if (send(fd, buff, size_read, 0) < 0)
+			return 1;
 		std::cout << size_read << std::endl; 
 		if (size_read < BUFFSIZE)
 		{
@@ -336,9 +333,9 @@ void Response::deleteTempFiles()
 	std::string rqstTmpFile = request.getTempFilePath();
 	std::string rspTmpFile = _bodyPath;
 	if (rqstTmpFile != "input_" && std::remove(rqstTmpFile.c_str()) == -1)
-		std::cout << "Error deleting temp file" << rqstTmpFile << std::endl;
+		std::cout << "Error deleting temp file " << rqstTmpFile << std::endl;
 	if (!rspTmpFile.empty() && std::remove(rspTmpFile.c_str()) == -1)
-		std::cout << "Error deleting temp file" << rspTmpFile << std::endl;
+		std::cout << "Error deleting temp file " << rspTmpFile << std::endl;
 }
 
 int Response::uploadFile()
@@ -349,9 +346,9 @@ int Response::uploadFile()
 	int cutLength = (location == "/") ? location.length() - 1 : location.length();
 	_fileOrFolder = _location.getClientBodyTempPath() + 
 		request.getPath().substr(cutLength);
-	std::cout << "file path is : " << _fileOrFolder << std::endl;
 	if (rename(request.getTempFilePath().c_str(), _fileOrFolder.c_str()) == 0) {
         std::cout << _fileOrFolder << " uploaded successfully" << std::endl;
+		request.setTempFilePath("input_");
     } else {
         std::cerr << "Error uploading" << _fileOrFolder << std::endl;
     }

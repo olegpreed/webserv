@@ -1,9 +1,8 @@
 #!/usr/local/bin/python3.9
 
 # install googletans
-
-# pip3 install googletrans==4.0.0-rc1 
-# pip3 install certifi
+# pip3.9 install googletrans==4.0.0-rc1 
+# pip3.9 install certifi
 
 import googletrans
 import cgi
@@ -56,8 +55,6 @@ if "text" in form:
 	src_txt = form.getvalue("text")
 else:
 	src_txt = ""
-
-# src_txt = "Hello World!"
 
 # Translate the English text to Thai
 thai_text = translate_text(src_txt)

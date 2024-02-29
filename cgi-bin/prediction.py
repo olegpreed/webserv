@@ -1,19 +1,60 @@
 #!/usr/local/bin/python3.10
 
-# import os
+# import cgi
+import os
 import requests
+import json
 
-# Function to get the horoscope sign based on the date of birth
+# Function to send GET request to the API
+def get_horoscope(date, lang):
+    url = f"https://newastro.vercel.app/libra/?date={date}&lang={lang}"
+    headers = {"accept": "application/json"}
+    response = requests.get(url, headers=headers)
+    return response.json()
 
-url = "https://sameer-kumar-aztro-v1.p.rapidapi.com/"
+# Main CGI script
+print("Content-Type: text/html\r\n\r\n")
 
-querystring = {"sign":"aquarius","day":"today"}
+# form = cgi.FieldStorage()
 
-headers = {
-	"X-RapidAPI-Key": "1404c54e37msh9cab5db91e707adp19bd80jsn2fb1f0d497ee",
-	"X-RapidAPI-Host": "sameer-kumar-aztro-v1.p.rapidapi.com"
-}
+# Get date and language from the query parameters
+# date = form.getvalue('date')
+# lang = form.getvalue('lang')
 
-response = requests.post(url, headers=headers, params=querystring)
+query_string = os.getenv('QUERY_STRING')
+lang = 'en'
 
-print(response.json())
+if query_string:
+	params = query_string.split('&')
+	dob = None
+	for param in params:
+		key, value = param.split('=')
+		if key == 'dob':
+			dob = value
+			break
+    
+	if dob:
+		# Send GET request to the API
+		try:
+			horoscope_data = get_horoscope(dob, lang)
+			horoscope = horoscope_data.get('horoscope', '')
+			icon_url = horoscope_data.get('icon', '')
+
+			# Print HTML with horoscope output
+			print(f"""
+				<html>
+				<head>
+					<title>Horoscope</title>
+				</head>
+				<body>
+					<h1>Your Horoscope Prediction:</h1>
+					<p>Date: {date}</p>
+					<p>Horoscope: {horoscope}</p>
+					<img src="{icon_url}" alt="Zodiac Icon">
+				</body>
+				</html>
+			""")
+		except Exception as e:
+			print(f"<h1>Error: {e}</h1>")
+else:
+    print("<h1>Error: Date or language not provided</h1>")

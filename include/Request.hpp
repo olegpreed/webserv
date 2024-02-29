@@ -70,6 +70,7 @@ public:
 	const std::map<std::string, std::string> &getHeaders() const;
 
 	void setTempFileFd(int tempFileFd);
+	void setTempFilePath(const std::string &path);
 	void setStatus(Status status);
 
 	int parse(const std::string &requestChunk);

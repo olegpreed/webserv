@@ -53,6 +53,11 @@ void Request::setTempFileFd(int tempFileFd)
 {
 	_tempFileFd = tempFileFd;
 }
+void Request::setTempFilePath(const std::string &path)
+{
+	_tempFilePath = path;
+}
+
 
 void Request::setStatus(Status status)
 {
