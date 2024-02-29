@@ -148,7 +148,8 @@ int Response::executeCGI()
 {
 	_isCGI = true;
 	char **env = initEnv();
-	_code = CGIInterface::executeCGI(_CGIHeaders, _bodyPath, env, 
+	_code = CGIInterface::executeCGI(
+		_CGIHeaders, _bodyPath, env, 
 		_location.getCgiPass(), request.getTempFilePath());
 	std::cout << "CGI code: " << _code << std::endl;
 	freeEnv(env);

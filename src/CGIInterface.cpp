@@ -127,7 +127,7 @@ int CGIInterface::_execute(std::string& header, std::string& body_path,
 	if (argv == NULL || envp == NULL)
 		return _deleteServiceArgs(argv, exit_status);
 	if (file_fd == -1)
-		close(STDIN_FILENO);
+		;
 	else if (dup2(file_fd, STDIN_FILENO) == -1)
 		return _deleteServiceArgs(argv, exit_status);
 	int pipe_fd[2];

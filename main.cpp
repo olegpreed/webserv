@@ -1,18 +1,3 @@
-#include <thread>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <string>
-#include <iostream>
-#include <unistd.h>
-#include <csignal>
-#include <fcntl.h>
-
-#include "Request.hpp"
-#include "Response.hpp"
-#include "Config.hpp"
-#include "ServerConfig.hpp"
-#include "Location.hpp"
-#include "Socket.hpp"
 #include "Client.hpp"
 
 int findMatchingServerBlock(std::vector<ServerConfig> &server_config, const std::string &host)

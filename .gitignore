@@ -22,6 +22,9 @@ output_temp_*
 # For python modules
 requirements.txt
 
+# For chunks test
+chunks.txt
+
 # Linker output
 *.ilk
 *.map
