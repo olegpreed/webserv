@@ -310,9 +310,9 @@ int Request::parseChunks()
 			if (_chunkSize == 0)
 			{
 				_status = DONE;
-				close(_tempFileFd);
 				if (!_bodyBuffer.empty() && writeToFile())
 					return 500;
+				close(_tempFileFd);
 				_buffer.clear();
 				return 0;
 			}
