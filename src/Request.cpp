@@ -149,7 +149,7 @@ int Request::writeToFile()
 	_bodyBuffer.clear();
 	if (bytesWritten == -1)
 	{
-		std::cout << "Error writing to file" << std::endl;
+		std::cout << "Error writing to file " << _tempFileFd << std::endl;
 		return 1;
 	}
 	return 0;

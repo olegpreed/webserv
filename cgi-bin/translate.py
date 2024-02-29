@@ -26,7 +26,7 @@ html_template = """
 			</a></div>
 	</div>
 	<div class="content">
-		<form id="myForm" action="/cgi-magic" method="POST">
+		<form id="myForm" action="/translate" method="POST">
 			<div class="custom-input">
 				<textarea class="text-area" class="input-text" placeholder="Enter your text here..."
 					name="text">{}</textarea>

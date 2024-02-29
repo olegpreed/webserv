@@ -227,31 +227,6 @@ int runServers(std::vector<Socket> &sockets, fd_set &masterRead, int numSock)
 		fdread = masterRead;
 		fdwrite = masterWrite;
 		num = clients.empty() ? numSock : clients.rbegin()->first + 1;
-		// for (std::vector<Socket>::iterator it = sockets.begin();
-		// 	 it != sockets.end(); ++it)
-		// {
-		// 	if (FD_ISSET(it->getFd(), &fdread))
-		// 		std::cout << "Server " << it->getFd() << " " << printAddr(it->getAddr().sin_addr, 
-		// 	it->getAddr().sin_port) << " is ready" << std::endl;
-		// }
-		// if (!clients.empty())
-		// {
-		// 	for (std::map<int, Client *>::iterator it = clients.begin();
-		// 	 it != clients.end(); ++it)
-		// 	{
-		// 		if (FD_ISSET(it->first, &fdread))
-		// 			std::cout << "Client " << it->first << " " << printAddr(it->second->getAddr().sin_addr,
-		// 				it->second->getAddr().sin_port) << " is ready for read" << std::endl;
-		// 	}
-		// 	for (std::map<int, Client *>::iterator it = clients.begin();
-		// 		it != clients.end(); ++it)
-		// 	{
-		// 		if (FD_ISSET(it->first, &fdwrite))
-		// 			std::cout << "Client " << it->first << " " << printAddr(it->second->getAddr().sin_addr,
-		// 				it->second->getAddr().sin_port) << " is ready for write" << std::endl;
-		// 	}
-		// }
-		std::cout << "num is " << num << std::endl;
 		if (select(num, &fdread, &fdwrite, NULL, NULL) < 0)
 		{
 			std::cerr << "select() error" << std::endl;
